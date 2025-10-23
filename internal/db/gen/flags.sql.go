@@ -84,7 +84,7 @@ type UpsertFlagParams struct {
 	Description pgtype.Text `json:"description"`
 	Enabled     bool        `json:"enabled"`
 	Rollout     int32       `json:"rollout"`
-	Expression  pgtype.Text `json:"expression"`
+	Expression  *string     `json:"expression"`
 	Config      []byte      `json:"config"`
 	Env         string      `json:"env"`
 }

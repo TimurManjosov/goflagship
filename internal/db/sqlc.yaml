@@ -12,3 +12,29 @@ sql:
         sql_package: 'pgx/v5'
         emit_json_tags: true
         emit_interface: false
+        overrides:
+          # timestamps -> time.Time
+          - db_type: 'pg_catalog.timestamptz'
+            go_type:
+              import: 'time'
+              type: 'Time'
+          - db_type: 'pg_catalog.timestamp'
+            go_type:
+              import: 'time'
+              type: 'Time'
+
+          # jsonb -> []byte (easy to json.Unmarshal)
+          - db_type: 'pg_catalog.jsonb'
+            go_type:
+              type: '[]byte'
+
+          # text -> string (basic type is ok as object form too)
+          - db_type: 'pg_catalog.text'
+            go_type:
+              type: 'string'
+
+          # flags.expression is nullable -> *string
+          - column: 'flags.expression'
+            go_type:
+              type: 'string'
+              pointer: true
