@@ -26,18 +26,21 @@ func main() {
 	if err != nil { log.Fatalf("db: %v", err) }
 	defer pool.Close()
 
+	rp := repo.New(pool)
+
 	// initial snapshot
-	r := repo.New(pool)
-	rows, err := r.GetAllFlags(ctx, cfg.Env)
+	rows, err := rp.GetAllFlags(ctx, cfg.Env)
 	if err != nil { log.Fatalf("load flags: %v", err) }
 	s := snapshot.BuildFromRows(rows)
 	snapshot.Update(s)
 	log.Printf("snapshot: %d flags, etag=%s", len(s.Flags), s.ETag)
 
-	// http server
+	// API server with deps
+	srvAPI := api.NewServer(rp, cfg.Env, cfg.AdminAPIKey)
+
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr,
-		Handler:      api.Router(),
+		Handler:      srvAPI.Router(),
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -48,6 +51,7 @@ func main() {
 			log.Fatalf("server: %v", err)
 		}
 	}()
+
 	// graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

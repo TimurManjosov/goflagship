@@ -1,0 +1,9 @@
+{
+  "key": "checkout_new_ui",
+  "description": "new checkout flow",
+  "enabled": true,
+  "rollout": 50,
+  "expression": "country == \"DE\"",
+  "config": { "variant": "B" },
+  "env": "prod"
+}
