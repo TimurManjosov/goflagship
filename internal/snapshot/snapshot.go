@@ -73,6 +73,10 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
     return &Snapshot{ETag: etag, Flags: flags, UpdatedAt: time.Now().UTC()}
 }
 
-func Update(s *Snapshot) { store(s) }
+func Update(s *Snapshot) {
+	store(s)
+	publishUpdate(s.ETag) // <— notify SSE listeners
+}
 
 func nullableString(sqlNull *string) *string { return sqlNull }
+

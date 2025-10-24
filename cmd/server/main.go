@@ -42,7 +42,7 @@ func main() {
 		Addr:         cfg.HTTPAddr,
 		Handler:      srvAPI.Router(),
 		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {
