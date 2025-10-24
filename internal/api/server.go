@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -28,33 +29,95 @@ func NewServer(r *repo.Repo, env, adminKey string) *Server {
 }
 
 func (s *Server) Router() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
-	r.Use(middleware.Timeout(5 * time.Second))
+    r := chi.NewRouter()
+    r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
 
-	// health
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+    // Normal endpoints (with a 5s timeout):
+    r.Group(func(r chi.Router) {
+        r.Use(middleware.Timeout(5 * time.Second))
 
-	// public: snapshot (ETag)
-	r.Get("/v1/flags/snapshot", func(w http.ResponseWriter, req *http.Request) {
-		snap := snapshot.Load()
-		if inm := req.Header.Get("If-None-Match"); inm != "" && inm == snap.ETag {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("ETag", snap.ETag)
-		_ = json.NewEncoder(w).Encode(snap)
-	})
+        r.Get("/healthz", s.handleHealth)
+        r.Get("/v1/flags/snapshot", s.handleSnapshot)
+        r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
+    })
 
-	// admin (protected): upsert flag
-	r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
+    // SSE endpoint (NO timeout!):
+    r.Get("/v1/flags/stream", s.handleStream)
 
-	return r
+    return r
 }
+
+
+func (s *Server) handleSnapshot(w http.ResponseWriter, req *http.Request) {
+    snap := snapshot.Load()
+    if inm := req.Header.Get("If-None-Match"); inm != "" && inm == snap.ETag {
+        w.WriteHeader(http.StatusNotModified)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("ETag", snap.ETag)
+    _ = json.NewEncoder(w).Encode(snap)
+}
+
+
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+    // Proper headers
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+
+    // Check flusher
+    flusher, ok := w.(http.Flusher)
+    if !ok {
+        http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+        return
+    }
+
+    // Subscribe to updates
+    updates, unsubscribe := snapshot.Subscribe()
+    defer unsubscribe()
+
+    // Send init immediately
+    snap := snapshot.Load()
+    writeSSE(w, "init", map[string]string{"etag": snap.ETag})
+    flusher.Flush()
+
+    ticker := time.NewTicker(25 * time.Second)
+    defer ticker.Stop()
+
+    ctx := r.Context()
+    for {
+        select {
+        case etag, ok := <-updates:
+            if !ok {
+                return
+            }
+            writeSSE(w, "update", map[string]string{"etag": etag})
+            flusher.Flush()
+
+        case <-ticker.C:
+            fmt.Fprint(w, ": ping\n\n")
+            flusher.Flush()
+
+        case <-ctx.Done():
+            return
+        }
+    }
+}
+
+func writeSSE(w http.ResponseWriter, event string, data any) {
+    w.Write([]byte("event: " + event + "\n"))
+    json.NewEncoder(w).Encode(map[string]any{"data": data})
+    w.Write([]byte("\n"))
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+    w.WriteHeader(http.StatusOK)
+    _, _ = w.Write([]byte("ok"))
+}
+
+
 
 // ---- handlers ----
 
