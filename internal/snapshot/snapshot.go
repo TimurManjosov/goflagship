@@ -39,6 +39,7 @@ func Load() *Snapshot {
 	return (*Snapshot)(ptr)
 }
 
+
 func textToString(t pgtype.Text) string {
     if t.Valid {
         return t.String
