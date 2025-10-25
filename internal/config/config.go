@@ -9,6 +9,8 @@ type Config struct {
 	Env          string
 	AdminAPIKey  string
 	ClientAPIKey string
+	MetricsAddr  string
+
 }
 
 func Load() (*Config, error) {
@@ -23,6 +25,8 @@ func Load() (*Config, error) {
 	v.SetDefault("ENV", "prod")
 	v.SetDefault("ADMIN_API_KEY", "admin-123")
 	v.SetDefault("CLIENT_API_KEY", "client-xyz")
+	v.SetDefault("METRICS_ADDR", ":9090")
+
 
 	return &Config{
 		AppEnv:       v.GetString("APP_ENV"),
@@ -31,5 +35,7 @@ func Load() (*Config, error) {
 		Env:          v.GetString("ENV"),
 		AdminAPIKey:  v.GetString("ADMIN_API_KEY"),
 		ClientAPIKey: v.GetString("CLIENT_API_KEY"),
+		MetricsAddr:  v.GetString("METRICS_ADDR"),
+
 	}, nil
 }

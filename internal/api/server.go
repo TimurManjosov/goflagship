@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
@@ -29,22 +32,38 @@ func NewServer(r *repo.Repo, env, adminKey string) *Server {
 }
 
 func (s *Server) Router() http.Handler {
-    r := chi.NewRouter()
-    r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+    // inside (s *Server) Router():
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	r.Use(telemetry.Middleware)
 
-    // Normal endpoints (with a 5s timeout):
-    r.Group(func(r chi.Router) {
-        r.Use(middleware.Timeout(5 * time.Second))
+	// CORS for browser clients (adjust origins as needed)
+	r.Use(cors.Handler(cors.Options{
+  	AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080"},
+  	AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+  	AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+  	ExposedHeaders:   []string{"ETag"},
+  	AllowCredentials: false,
+  	MaxAge:           300,
+	}))
 
-        r.Get("/healthz", s.handleHealth)
-        r.Get("/v1/flags/snapshot", s.handleSnapshot)
-        r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
-    })
+	// Normal routes with timeout + rate limit
+	r.Group(func(r chi.Router) {
+	r.Use(middleware.Timeout(5 * time.Second))
+	r.Use(httprate.LimitByIP(100, time.Minute)) // 100 req/min per IP
 
-    // SSE endpoint (NO timeout!):
-    r.Get("/v1/flags/stream", s.handleStream)
+	r.Get("/healthz", s.handleHealth)
+	r.Get("/v1/flags/snapshot", s.handleSnapshot)
+	r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
+	})
 
-    return r
+	// SSE route: no timeout, but optional gentle rate limit on connects
+	r.Group(func(r chi.Router) {
+	r.Use(httprate.LimitByIP(30, time.Minute)) // 30 connects/min per IP
+	r.Get("/v1/flags/stream", s.handleStream)
+	})
+
+return r
 }
 
 
@@ -209,6 +228,7 @@ func (s *Server) RebuildSnapshot(ctx context.Context, env string) error {
 	}
 	snap := snapshot.BuildFromRows(rows)
 	snapshot.Update(snap)
+	telemetry.SnapshotFlags.Set(float64(len(snap.Flags)))
 	return nil
 }
 
