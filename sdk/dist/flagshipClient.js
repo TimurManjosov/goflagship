@@ -1,0 +1,131 @@
+export class FlagshipClient {
+    constructor(opts = {}) {
+        this.base = 'http://localhost:8080';
+        this.es = null;
+        this.cache = null;
+        this.listeners = {};
+        this.reconnect = true;
+        this.rMin = 500;
+        this.rMax = 10000;
+        this.stopping = false;
+        this.base = opts.baseUrl ?? this.base;
+        // ✅ bind fetch to the global object to avoid “Illegal invocation”
+        const f = opts.fetchImpl ?? globalThis.fetch;
+        if (!f)
+            throw new Error('fetch is not available in this environment');
+        this.fetch = f.bind(globalThis);
+        this.ES = opts.eventSourceImpl ?? globalThis.EventSource;
+        this.reconnect = opts.reconnect ?? true;
+        this.rMin = opts.reconnectMinMs ?? this.rMin;
+        this.rMax = opts.reconnectMaxMs ?? this.rMax;
+    }
+    // ---- public API ----
+    async init() {
+        await this.refresh(); // initial snapshot
+        this.openStream(); // subscribe for updates
+        this.emit('ready');
+    }
+    isReady() {
+        return !!this.cache;
+    }
+    isEnabled(key) {
+        return !!this.cache?.flags?.[key]?.enabled;
+    }
+    getConfig(key) {
+        return this.cache?.flags?.[key]?.config;
+    }
+    keys() {
+        return Object.keys(this.cache?.flags ?? {});
+    }
+    on(ev, fn) {
+        var _a;
+        // get/create the bucket and cast it to Function[]
+        const arr = ((_a = this.listeners)[ev] || (_a[ev] = []));
+        arr.push(fn);
+        return () => {
+            const list = this.listeners[ev];
+            if (!list)
+                return;
+            this.listeners[ev] = list.filter((f) => f !== fn);
+        };
+    }
+    close() {
+        this.stopping = true;
+        this.es?.close();
+        this.es = null;
+    }
+    // ---- internals ----
+    async refresh() {
+        const url = `${this.base}/v1/flags/snapshot`;
+        const headers = {};
+        if (this.cache?.etag)
+            headers['If-None-Match'] = this.cache.etag;
+        const res = await this.fetch(url, { headers });
+        if (res.status === 304)
+            return; // nothing changed
+        if (!res.ok)
+            throw new Error(`snapshot ${res.status}`);
+        this.cache = await res.json();
+    }
+    openStream() {
+        if (!this.ES) {
+            throw new Error('EventSource is not available. Provide eventSourceImpl in Node.');
+        }
+        const url = `${this.base}/v1/flags/stream`;
+        const es = new this.ES(url);
+        this.es = es;
+        es.addEventListener('init', async (e) => {
+            try {
+                const { etag } = JSON.parse(e.data);
+                await this.refreshWithETag(etag);
+            }
+            catch (err) {
+                this.emit('error', err);
+            }
+        });
+        es.addEventListener('update', async (e) => {
+            try {
+                const { etag } = JSON.parse(e.data);
+                if (etag && etag !== this.cache?.etag) {
+                    await this.refreshWithETag(etag);
+                    this.emit('update', etag);
+                }
+            }
+            catch (err) {
+                this.emit('error', err);
+            }
+        });
+        es.onerror = () => {
+            this.es?.close();
+            this.es = null;
+            if (this.reconnect && !this.stopping) {
+                this.scheduleReconnect();
+            }
+        };
+    }
+    async refreshWithETag(etag) {
+        // Hint the server we already have this version
+        const url = `${this.base}/v1/flags/snapshot`;
+        const res = await this.fetch(url, { headers: { 'If-None-Match': etag } });
+        if (res.status === 304)
+            return;
+        if (!res.ok)
+            throw new Error(`snapshot ${res.status}`);
+        this.cache = await res.json();
+    }
+    scheduleReconnect() {
+        let delay = this.rMin + Math.random() * (this.rMin / 2);
+        delay = Math.min(delay, this.rMax);
+        setTimeout(() => {
+            if (!this.stopping && !this.es)
+                this.openStream();
+        }, delay);
+        // Exponential-ish backoff
+        this.rMin = Math.min(this.rMin * 2, this.rMax);
+    }
+    emit(ev, ...args) {
+        for (const fn of this.listeners[ev] || []) {
+            fn(...args);
+        }
+    }
+}
