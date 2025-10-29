@@ -130,7 +130,10 @@ export class FlagshipClient {
     es.addEventListener('init', async (e: MessageEvent) => {
       try {
         const { etag } = JSON.parse(e.data);
-        await this.refreshWithETag(etag);
+        const changed = await this.refreshWithETag(etag);
+        if (changed) {
+          this.emit('update', etag);
+        }
       } catch (err) {
         this.emit('error', err);
       }
