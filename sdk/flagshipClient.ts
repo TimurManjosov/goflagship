@@ -140,8 +140,10 @@ export class FlagshipClient {
       try {
         const { etag } = JSON.parse(e.data);
         if (etag && etag !== this.cache?.etag) {
-          await this.refreshWithETag(etag);
-          this.emit('update', etag);
+          const changed = await this.refreshWithETag(etag);
+          if (changed) {
+            this.emit('update', etag);
+          }
         }
       } catch (err) {
         this.emit('error', err);
@@ -157,13 +159,23 @@ export class FlagshipClient {
     };
   }
 
-  private async refreshWithETag(etag: string) {
-    // Hint the server we already have this version
+  private async refreshWithETag(etag: string): Promise<boolean> {
+    if (!etag) return false;
+
+    // Ask the server only if our local copy is stale
     const url = `${this.base}/v1/flags/snapshot`;
-    const res = await this.fetch(url, { headers: { 'If-None-Match': etag } });
-    if (res.status === 304) return;
+    const headers: Record<string, string> = {};
+    if (this.cache?.etag) headers['If-None-Match'] = this.cache.etag;
+
+    const res = await this.fetch(url, { headers });
+    if (res.status === 304) {
+      return false;
+    }
     if (!res.ok) throw new Error(`snapshot ${res.status}`);
-    this.cache = await res.json();
+
+    const next = (await res.json()) as Snapshot;
+    this.cache = next;
+    return true;
   }
 
   private scheduleReconnect() {
