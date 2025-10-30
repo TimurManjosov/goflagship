@@ -33,6 +33,8 @@ export declare class FlagshipClient {
     private refresh;
     private openStream;
     private refreshWithETag;
+    private snapshotUrl;
+    private fetchSnapshot;
     private scheduleReconnect;
     private emit;
 }

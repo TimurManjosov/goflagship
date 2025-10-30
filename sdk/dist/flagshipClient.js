@@ -56,16 +56,7 @@ export class FlagshipClient {
     }
     // ---- internals ----
     async refresh() {
-        const url = `${this.base}/v1/flags/snapshot`;
-        const headers = {};
-        if (this.cache?.etag)
-            headers['If-None-Match'] = this.cache.etag;
-        const res = await this.fetch(url, { headers });
-        if (res.status === 304)
-            return; // nothing changed
-        if (!res.ok)
-            throw new Error(`snapshot ${res.status}`);
-        this.cache = await res.json();
+        await this.fetchSnapshot();
     }
     openStream() {
         if (!this.ES) {
@@ -89,12 +80,16 @@ export class FlagshipClient {
         es.addEventListener('update', async (e) => {
             try {
                 const { etag } = JSON.parse(e.data);
-                if (etag && etag !== this.cache?.etag) {
-                    const changed = await this.refreshWithETag(etag);
-                    if (changed) {
-                        this.emit('update', etag);
-                    }
+                if (!etag) {
+                    return;
                 }
+                if (etag === this.cache?.etag) {
+                    const currentEtag = this.cache?.etag ?? etag;
+                    this.emit('update', currentEtag);
+                    return;
+                }
+                const changed = await this.refreshWithETag(etag);
+                this.emit('update', this.cache?.etag ?? etag);
             }
             catch (err) {
                 this.emit('error', err);
@@ -111,17 +106,31 @@ export class FlagshipClient {
     async refreshWithETag(etag) {
         if (!etag)
             return false;
-        // Ask the server only if our local copy is stale
-        const url = `${this.base}/v1/flags/snapshot`;
+        const changed = await this.fetchSnapshot();
+        return changed;
+    }
+    snapshotUrl() {
+        const base = this.base.endsWith('/') ? this.base : `${this.base}/`;
+        const url = new URL(`${base}v1/flags/snapshot`);
+        url.searchParams.set('ts', Date.now().toString());
+        return url.toString();
+    }
+    async fetchSnapshot() {
+        const url = this.snapshotUrl();
         const headers = {};
-        if (this.cache?.etag)
+        if (this.cache?.etag) {
             headers['If-None-Match'] = this.cache.etag;
-        const res = await this.fetch(url, { headers });
+        }
+        const res = await this.fetch(url, {
+            headers,
+            cache: 'no-store',
+        });
         if (res.status === 304) {
             return false;
         }
-        if (!res.ok)
+        if (!res.ok) {
             throw new Error(`snapshot ${res.status}`);
+        }
         const next = (await res.json());
         this.cache = next;
         return true;
