@@ -1,4 +1,5 @@
 import { FlagshipClient } from '../dist/flagshipClient.js';
+import { pathToFileURL } from 'node:url';
 
 class MessageEventShim {
   constructor(type, data) {
@@ -257,7 +258,7 @@ async function run() {
   }
 }
 
-if (import.meta.url === (process.argv[1] && new URL(`file://${process.argv[1]}`).href)) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   run().catch((err) => {
     console.error('Live update harness failed:', err);
     process.exitCode = 1;
