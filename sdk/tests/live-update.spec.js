@@ -193,9 +193,7 @@ class HeadlessPage {
         this.#pendingTimer = null;
         reject(new Error('Timed out waiting for update'));
       }, timeoutMs);
-      if (typeof timer === 'object' && typeof timer.unref === 'function') {
-        timer.unref();
-      }
+      timer.unref();
       this.#pendingTimer = timer;
     });
   }
