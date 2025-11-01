@@ -129,9 +129,15 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeSSE(w http.ResponseWriter, event string, data any) {
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		// Fallback to error message if marshaling fails
+		dataJSON = []byte(`{"error":"marshal failed"}`)
+	}
 	w.Write([]byte("event: " + event + "\n"))
-	json.NewEncoder(w).Encode(map[string]any{"data": data})
-	w.Write([]byte("\n"))
+	w.Write([]byte("data: "))
+	w.Write(dataJSON)
+	w.Write([]byte("\n\n"))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
