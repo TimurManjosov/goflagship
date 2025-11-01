@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<title>go-flagship demo</title>
+<pre id="out">loading…</pre>
+
+<script type="module">
+  import { FlagshipClient } from './dist/flagshipClient.js';
+
+  const out = document.getElementById('out');
+  const client = new FlagshipClient({ baseUrl: 'http://localhost:8080' });
+
+  client.on('ready', render);
+  client.on('update', render);
+  client.on('error', (e) => console.warn('SDK error:', e));
+
+  await client.init();
+
+  function render() {
+    const flags = client.keys().map((k) => ({
+      key: k,
+      enabled: client.isEnabled(k),
+      config: client.getConfig(k),
+    }));
+    out.textContent = JSON.stringify(
+      {
+        etag: client['cache']?.etag, // debug only
+        flags,
+      },
+      null,
+      2
+    );
+  }
+</script>

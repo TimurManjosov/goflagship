@@ -32,129 +32,135 @@ func NewServer(r *repo.Repo, env, adminKey string) *Server {
 }
 
 func (s *Server) Router() http.Handler {
-    // inside (s *Server) Router():
+	// inside (s *Server) Router():
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
 	r.Use(telemetry.Middleware)
 
 	// CORS for browser clients (adjust origins as needed)
 	r.Use(cors.Handler(cors.Options{
-  	AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080"},
-  	AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-  	AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-  	ExposedHeaders:   []string{"ETag"},
-  	AllowCredentials: false,
-  	MaxAge:           300,
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080"},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "If-None-Match"},
+		ExposedHeaders:   []string{"ETag"},
+		AllowCredentials: false,
+		MaxAge:           300,
 	}))
 
 	// Normal routes with timeout + rate limit
 	r.Group(func(r chi.Router) {
-	r.Use(middleware.Timeout(5 * time.Second))
-	r.Use(httprate.LimitByIP(100, time.Minute)) // 100 req/min per IP
+		r.Use(middleware.Timeout(5 * time.Second))
+		r.Use(httprate.LimitByIP(100, time.Minute)) // 100 req/min per IP
 
-	r.Get("/healthz", s.handleHealth)
-	r.Get("/v1/flags/snapshot", s.handleSnapshot)
-	r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
+		r.Get("/healthz", s.handleHealth)
+		r.Get("/v1/flags/snapshot", s.handleSnapshot)
+		r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects
 	r.Group(func(r chi.Router) {
-	r.Use(httprate.LimitByIP(30, time.Minute)) // 30 connects/min per IP
-	r.Get("/v1/flags/stream", s.handleStream)
+		r.Use(httprate.LimitByIP(30, time.Minute)) // 30 connects/min per IP
+		r.Get("/v1/flags/stream", s.handleStream)
 	})
 
-return r
+	return r
 }
-
 
 func (s *Server) handleSnapshot(w http.ResponseWriter, req *http.Request) {
-    snap := snapshot.Load()
-    if inm := req.Header.Get("If-None-Match"); inm != "" && inm == snap.ETag {
-        w.WriteHeader(http.StatusNotModified)
-        return
-    }
-    w.Header().Set("Content-Type", "application/json")
-    w.Header().Set("ETag", snap.ETag)
-    _ = json.NewEncoder(w).Encode(snap)
+	snap := snapshot.Load()
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.Header().Set("ETag", snap.ETag)
+
+	if inm := req.Header.Get("If-None-Match"); inm != "" && inm == snap.ETag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(snap)
 }
 
-
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
-    // Proper headers
-    w.Header().Set("Content-Type", "text/event-stream")
-    w.Header().Set("Cache-Control", "no-cache")
-    w.Header().Set("Connection", "keep-alive")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Proper headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-    // Check flusher
-    flusher, ok := w.(http.Flusher)
-    if !ok {
-        http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-        return
-    }
+	// Check flusher
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
 
-    // Subscribe to updates
-    updates, unsubscribe := snapshot.Subscribe()
-    defer unsubscribe()
+	// Subscribe to updates
+	updates, unsubscribe := snapshot.Subscribe()
+	defer unsubscribe()
 
-    // Send init immediately
-    snap := snapshot.Load()
-    writeSSE(w, "init", map[string]string{"etag": snap.ETag})
-    flusher.Flush()
+	// Send init immediately
+	snap := snapshot.Load()
+	writeSSE(w, "init", map[string]string{"etag": snap.ETag})
+	flusher.Flush()
 
-    ticker := time.NewTicker(25 * time.Second)
-    defer ticker.Stop()
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
 
-    ctx := r.Context()
-    for {
-        select {
-        case etag, ok := <-updates:
-            if !ok {
-                return
-            }
-            writeSSE(w, "update", map[string]string{"etag": etag})
-            flusher.Flush()
+	ctx := r.Context()
+	for {
+		select {
+		case etag, ok := <-updates:
+			if !ok {
+				return
+			}
+			writeSSE(w, "update", map[string]string{"etag": etag})
+			flusher.Flush()
 
-        case <-ticker.C:
-            fmt.Fprint(w, ": ping\n\n")
-            flusher.Flush()
+		case <-ticker.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
 
-        case <-ctx.Done():
-            return
-        }
-    }
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func writeSSE(w http.ResponseWriter, event string, data any) {
-    w.Write([]byte("event: " + event + "\n"))
-    json.NewEncoder(w).Encode(map[string]any{"data": data})
-    w.Write([]byte("\n"))
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		// Fallback to error message if marshaling fails
+		dataJSON = []byte(`{"error":"marshal failed"}`)
+	}
+	w.Write([]byte("event: " + event + "\n"))
+	w.Write([]byte("data: "))
+	w.Write(dataJSON)
+	w.Write([]byte("\n\n"))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-    w.WriteHeader(http.StatusOK)
-    _, _ = w.Write([]byte("ok"))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
 }
-
-
 
 // ---- handlers ----
 
 type upsertRequest struct {
-	Key         string                 `json:"key"`
-	Description string                 `json:"description"`
-	Enabled     bool                   `json:"enabled"`
-	Rollout     int32                  `json:"rollout"`
-	Expression  *string                `json:"expression,omitempty"`
-	Config      map[string]any         `json:"config,omitempty"`
-	Env         *string                `json:"env,omitempty"` // defaults to s.env
+	Key         string         `json:"key"`
+	Description string         `json:"description"`
+	Enabled     bool           `json:"enabled"`
+	Rollout     int32          `json:"rollout"`
+	Expression  *string        `json:"expression,omitempty"`
+	Config      map[string]any `json:"config,omitempty"`
+	Env         *string        `json:"env,omitempty"` // defaults to s.env
 }
 
 type upsertResponse struct {
 	OK   bool   `json:"ok"`
 	ETag string `json:"etag"`
 }
-
 
 func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	var req upsertRequest
@@ -194,13 +200,13 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 
 	// upsert via sqlc
 	params := dbgen.UpsertFlagParams{
-		Key:        req.Key,
+		Key:         req.Key,
 		Description: pgtype.Text{String: req.Description, Valid: true},
-		Enabled:    req.Enabled,
-		Rollout:    req.Rollout,
-		Expression: req.Expression, // *string ok
-		Config:     cfgBytes,       // []byte
-		Env:        env,
+		Enabled:     req.Enabled,
+		Rollout:     req.Rollout,
+		Expression:  req.Expression, // *string ok
+		Config:      cfgBytes,       // []byte
+		Env:         env,
 	}
 	if err := s.repo.UpsertFlag(r.Context(), params); err != nil {
 		writeError(w, http.StatusInternalServerError, "db upsert failed")
