@@ -83,12 +83,13 @@ export class FlagshipClient {
                 if (!etag) {
                     return;
                 }
+                // Skip if we already have this version
                 if (etag === this.cache?.etag) {
-                    const currentEtag = this.cache?.etag ?? etag;
-                    this.emit('update', currentEtag);
                     return;
                 }
-                const changed = await this.refreshWithETag(etag);
+                // Force fetch without If-None-Match since we know there's an update
+                await this.fetchSnapshot(true);
+                // Always emit update after successful fetch
                 this.emit('update', this.cache?.etag ?? etag);
             }
             catch (err) {
@@ -115,10 +116,11 @@ export class FlagshipClient {
         url.searchParams.set('ts', Date.now().toString());
         return url.toString();
     }
-    async fetchSnapshot() {
+    async fetchSnapshot(skipCache = false) {
         const url = this.snapshotUrl();
         const headers = {};
-        if (this.cache?.etag) {
+        // Only send If-None-Match if we're not forcing a refresh
+        if (!skipCache && this.cache?.etag) {
             headers['If-None-Match'] = this.cache.etag;
         }
         const res = await this.fetch(url, {
@@ -132,8 +134,9 @@ export class FlagshipClient {
             throw new Error(`snapshot ${res.status}`);
         }
         const next = (await res.json());
+        const changed = !this.cache || this.cache.etag !== next.etag;
         this.cache = next;
-        return true;
+        return changed;
     }
     scheduleReconnect() {
         let delay = this.rMin + Math.random() * (this.rMin / 2);
