@@ -56,7 +56,7 @@ It's like a self-hosted, open-source alternative to **LaunchDarkly**, **GrowthBo
                                           ▼
                                     ┌──────────────┐
                                     │   Web App    │
-                                    │ (demo.html)  │
+                                    │ (index.html) │
                                     └──────────────┘
 ```
 
@@ -186,7 +186,7 @@ go-flagship/
 │   ├── telemetry/       # Prometheus & pprof
 │   └── config/          # Environment config
 ├── sdk/                 # TypeScript SDK
-│   └── demo.html        # Minimal live demo
+│   └── index.html       # Minimal live demo
 └── README.md
 ```
 
@@ -202,7 +202,7 @@ cd sdk
 npx http-server -p 3000 -c-1
 ```
 
-3. Open `http://localhost:3000/demo.html`
+3. Open `http://localhost:3000/index.html`
 
 4. Use cURL to add or update flags → watch the page auto-update instantly
 
