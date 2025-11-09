@@ -313,10 +313,7 @@
     <script type="module">
       import { FlagshipClient } from './dist/flagshipClient.js';
 
-      // API_BASE can be configured via URL parameter: ?api=http://localhost:8080
-      // Otherwise defaults to current origin
-      const urlParams = new URLSearchParams(window.location.search);
-      const API_BASE = urlParams.get('api') || window.location.origin;
+      const API_BASE = 'http://localhost:8080';
 
       const statusText = document.getElementById('status-text');
       const sseState = document.getElementById('sse-state');
@@ -339,15 +336,19 @@
       }
 
       async function fetchSnapshotDirect() {
-        // Build URL with a cache-busting timestamp to avoid any intermediary caches
-        const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
-        const url = new URL(`${base}/v1/flags/snapshot`);
+        // Add a cache-busting param to avoid 304 from intermediary caches
+        const url = new URL(`${API_BASE}/v1/flags/snapshot`);
         url.searchParams.set('ts', Date.now().toString());
 
-        // Do not set non-simple request headers to avoid a CORS preflight
         const res = await fetch(url.toString(), {
+          // Avoid custom headers that trigger a CORS preflight; rely on cache: 'no-store' + ts param
           cache: 'no-store',
         });
+
+        // Gracefully handle 304 (not modified) if some cache adds If-None-Match
+        if (res.status === 304) {
+          return null;
+        }
         if (!res.ok) throw new Error('snapshot ' + res.status);
         return res.json();
       }
@@ -410,7 +411,9 @@
       async function reloadSnapshot() {
         try {
           const snap = await fetchSnapshotDirect();
-          renderSnapshot(snap);
+          if (snap) {
+            renderSnapshot(snap);
+          }
         } catch (err) {
           console.error(err);
           statusText.textContent = 'Failed to load snapshot';
