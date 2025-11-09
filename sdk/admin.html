@@ -313,7 +313,10 @@
     <script type="module">
       import { FlagshipClient } from './dist/flagshipClient.js';
 
-      const API_BASE = 'http://localhost:8080';
+      // API_BASE can be configured via URL parameter: ?api=http://localhost:8080
+      // Otherwise defaults to current origin
+      const urlParams = new URLSearchParams(window.location.search);
+      const API_BASE = urlParams.get('api') || window.location.origin;
 
       const statusText = document.getElementById('status-text');
       const sseState = document.getElementById('sse-state');

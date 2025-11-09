@@ -72,8 +72,6 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 	w.Header().Set("ETag", snap.ETag)
-	// Allow browser origins (CORS simple GET without preflight)
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	if inm := req.Header.Get("If-None-Match"); inm != "" && inm == snap.ETag {
 		w.WriteHeader(http.StatusNotModified)
@@ -89,8 +87,6 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	// SSE must allow the requesting origin; wildcard is fine unless credentials are needed.
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	// Check flusher
 	flusher, ok := w.(http.Flusher)
