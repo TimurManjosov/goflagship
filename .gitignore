@@ -1,2 +1,12 @@
-server
-/tmp/
+# Go
+bin/
+*.exe
+*.test
+
+# Node / SDK
+node_modules/
+sdk/dist-temp/
+.DS_Store
+
+# Environment / misc
+.env
