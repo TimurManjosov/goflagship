@@ -625,7 +625,12 @@
     </div>
 
     <script>
-      const API_BASE = 'http://localhost:8080';
+      // Determine API_BASE dynamically: use ?api_base=... query param if present, else window.location.origin
+      function getApiBase() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('api_base') || window.location.origin;
+      }
+      const API_BASE = getApiBase();
       const flagsBody = document.getElementById('flagsBody');
       const etagValue = document.getElementById('etagValue');
       const sseStatusText = document.getElementById('sseStatusText');
@@ -716,17 +721,39 @@
             tr.classList.add('selected');
           }
 
-          tr.innerHTML = `
-          <td><span class="pill-text">${f.key}</span></td>
-          <td><span class="pill pill-env">${f.env}</span></td>
-          <td>
-            <span class="pill ${f.enabled ? 'pill-green' : 'pill-red'}">
-              ${f.enabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </td>
-          <td><span class="pill-text">${shortConfig(f.config)}</span></td>
-          <td>${formatDate(f.updatedAt)}</td>
-        `;
+          // Create cells safely to avoid XSS
+          const tdKey = document.createElement('td');
+          const spanKey = document.createElement('span');
+          spanKey.className = 'pill-text';
+          spanKey.textContent = f.key;
+          tdKey.appendChild(spanKey);
+
+          const tdEnv = document.createElement('td');
+          const spanEnv = document.createElement('span');
+          spanEnv.className = 'pill pill-env';
+          spanEnv.textContent = f.env;
+          tdEnv.appendChild(spanEnv);
+
+          const tdEnabled = document.createElement('td');
+          const spanEnabled = document.createElement('span');
+          spanEnabled.className = 'pill ' + (f.enabled ? 'pill-green' : 'pill-red');
+          spanEnabled.textContent = f.enabled ? 'Enabled' : 'Disabled';
+          tdEnabled.appendChild(spanEnabled);
+
+          const tdConfig = document.createElement('td');
+          const spanConfig = document.createElement('span');
+          spanConfig.className = 'pill-text';
+          spanConfig.textContent = shortConfig(f.config);
+          tdConfig.appendChild(spanConfig);
+
+          const tdUpdated = document.createElement('td');
+          tdUpdated.textContent = formatDate(f.updatedAt);
+
+          tr.appendChild(tdKey);
+          tr.appendChild(tdEnv);
+          tr.appendChild(tdEnabled);
+          tr.appendChild(tdConfig);
+          tr.appendChild(tdUpdated);
 
           tr.addEventListener('click', () => {
             selectedKey = f.key;
@@ -808,6 +835,10 @@
         es.addEventListener('update', async (e) => {
           try {
             const data = JSON.parse(e.data || '{}');
+            if (typeof data.etag === 'undefined') {
+              console.warn('[admin] SSE update event missing etag:', data);
+              return;
+            }
             console.log('[admin] SSE update etag =', data.etag);
             await fetchSnapshot();
           } catch (err) {
@@ -815,10 +846,21 @@
           }
         });
 
+        es.addEventListener('open', () => {
+          console.log('[admin] SSE connection opened');
+          setSSEBadge(true);
+        });
+
         es.onerror = (err) => {
           console.error('SSE error', err);
           setSSEBadge(false);
+          sseStatusText.textContent = 'SSE: reconnecting…';
         };
+
+        // Clean up EventSource connection on page unload
+        window.addEventListener('beforeunload', () => {
+          if (es) es.close();
+        });
       }
 
       form.addEventListener('submit', async (e) => {
@@ -879,7 +921,14 @@
             body: JSON.stringify(body),
           });
 
-          const json = await res.json().catch(() => ({}));
+          let json;
+          try {
+            json = await res.json();
+          } catch (parseErr) {
+            console.error('Failed to parse response JSON:', parseErr);
+            setStatus('Save failed: Invalid JSON response from server.', 'error');
+            return;
+          }
 
           if (!res.ok || json.ok === false) {
             const msg = json.message || 'HTTP ' + res.status;
@@ -889,6 +938,9 @@
           }
 
           const etag = json.etag || '(no etag in response)';
+          // Update selected key/env to highlight the saved flag
+          selectedKey = key;
+          selectedEnv = env;
           setStatus('Flag saved. Waiting for SSE refresh (etag ' + etag + ').', 'success');
         } catch (err) {
           console.error('save error', err);
