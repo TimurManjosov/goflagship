@@ -840,10 +840,10 @@
           try {
             const data = JSON.parse(e.data || '{}');
             if (typeof data.etag === 'undefined') {
-              console.warn('[admin] SSE update event missing etag:', data);
+              console.warn('[admin] SSE update event missing etag');
               return;
             }
-            console.log('[admin] SSE update etag =', data.etag);
+            console.log('[admin] SSE update received');
             await fetchSnapshot();
           } catch (err) {
             console.error('SSE update parse error', err);
