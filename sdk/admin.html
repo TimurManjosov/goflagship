@@ -863,10 +863,18 @@
       }
 
       // Clean up EventSource connection on page unload
-      window.addEventListener('beforeunload', () => {
+      function cleanupEventSource() {
         if (es) {
           es.close();
           es = null;
+        }
+      }
+      
+      window.addEventListener('beforeunload', cleanupEventSource);
+      window.addEventListener('pagehide', cleanupEventSource);
+      window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          cleanupEventSource();
         }
       });
 
