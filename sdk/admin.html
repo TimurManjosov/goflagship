@@ -628,7 +628,23 @@
       // Determine API_BASE dynamically: use ?api_base=... query param if present, else window.location.origin
       function getApiBase() {
         const params = new URLSearchParams(window.location.search);
-        return params.get('api_base') || window.location.origin;
+        const apiBaseParam = params.get('api_base');
+        if (apiBaseParam) {
+          // Validate the URL format
+          try {
+            const url = new URL(apiBaseParam);
+            // Only allow http and https protocols
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              console.warn('Invalid api_base protocol, falling back to window.location.origin');
+              return window.location.origin;
+            }
+            return apiBaseParam;
+          } catch (e) {
+            console.warn('Invalid api_base URL format, falling back to window.location.origin');
+            return window.location.origin;
+          }
+        }
+        return window.location.origin;
       }
       const API_BASE = getApiBase();
       const flagsBody = document.getElementById('flagsBody');
@@ -812,7 +828,7 @@
         es.addEventListener('init', async (e) => {
           try {
             const data = JSON.parse(e.data || '{}');
-            console.log('[admin] SSE init', data);
+            console.log('[admin] SSE init, etag:', data.etag || 'none');
             await fetchSnapshot();
             setSSEBadge(true);
           } catch (err) {
@@ -848,7 +864,10 @@
 
       // Clean up EventSource connection on page unload
       window.addEventListener('beforeunload', () => {
-        if (es) es.close();
+        if (es) {
+          es.close();
+          es = null;
+        }
       });
 
       form.addEventListener('submit', async (e) => {
