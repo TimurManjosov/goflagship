@@ -625,7 +625,7 @@
     </div>
 
     <script>
-      // Determine API_BASE dynamically: use ?api_base=... query param if present, else window.location.origin
+      // Determine API_BASE dynamically: use ?api_base=... query param if present, else hardcoded localhost:8080
       function getApiBase() {
         const params = new URLSearchParams(window.location.search);
         const apiBaseParam = params.get('api_base');
@@ -635,16 +635,16 @@
             const url = new URL(apiBaseParam);
             // Only allow http and https protocols
             if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-              console.warn('Invalid api_base protocol, falling back to window.location.origin');
-              return window.location.origin;
+              console.warn('Invalid api_base protocol, falling back to default');
+              return 'http://localhost:8080';
             }
             return apiBaseParam;
           } catch (e) {
-            console.warn('Invalid api_base URL format, falling back to window.location.origin');
-            return window.location.origin;
+            console.warn('Invalid api_base URL format, falling back to default');
+            return 'http://localhost:8080';
           }
         }
-        return window.location.origin;
+        return 'http://localhost:8080';
       }
       const API_BASE = getApiBase();
       const flagsBody = document.getElementById('flagsBody');
@@ -727,20 +727,25 @@
       }
 
       function renderSnapshot() {
-        if (
-          !currentSnapshot ||
-          !Array.isArray(currentSnapshot.flags) ||
-          currentSnapshot.flags.length === 0
-        ) {
+        if (!currentSnapshot || !currentSnapshot.flags) {
           clearTable();
           etagValue.textContent = currentSnapshot?.etag || '—';
+          return;
+        }
+
+        // Convert flags object to array
+        const flagsArray = Object.values(currentSnapshot.flags);
+
+        if (flagsArray.length === 0) {
+          clearTable();
+          etagValue.textContent = currentSnapshot.etag || '—';
           return;
         }
 
         flagsBody.innerHTML = '';
         etagValue.textContent = currentSnapshot.etag || '—';
 
-        currentSnapshot.flags.forEach((f) => {
+        flagsArray.forEach((f) => {
           const tr = document.createElement('tr');
           if (f.key === selectedKey && f.env === selectedEnv) {
             tr.classList.add('selected');
@@ -749,10 +754,12 @@
           // Create cells safely to avoid XSS
           tr.appendChild(createPillCell(f.key, 'pill-text'));
           tr.appendChild(createPillCell(f.env, 'pill pill-env'));
-          tr.appendChild(createPillCell(
-            f.enabled ? 'Enabled' : 'Disabled',
-            'pill ' + (f.enabled ? 'pill-green' : 'pill-red')
-          ));
+          tr.appendChild(
+            createPillCell(
+              f.enabled ? 'Enabled' : 'Disabled',
+              'pill ' + (f.enabled ? 'pill-green' : 'pill-red')
+            )
+          );
           tr.appendChild(createPillCell(shortConfig(f.config), 'pill-text'));
 
           const tdUpdated = document.createElement('td');
@@ -869,7 +876,7 @@
           es = null;
         }
       }
-      
+
       window.addEventListener('beforeunload', cleanupEventSource);
       window.addEventListener('pagehide', cleanupEventSource);
       window.addEventListener('visibilitychange', () => {
