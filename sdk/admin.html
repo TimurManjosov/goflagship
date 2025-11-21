@@ -1,507 +1,983 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <title>go-flagship · Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
+      :root {
+        --bg: #050816;
+        --bg-elevated: #0b1020;
+        --bg-elevated-2: #111827;
+        --border: #1f2937;
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.12);
+        --danger: #f97373;
+        --danger-soft: rgba(248, 113, 113, 0.12);
+        --text: #e5e7eb;
+        --text-soft: #9ca3af;
+        --radius: 10px;
+        --shadow: 0 18px 40px rgba(15, 23, 42, 0.8);
+        --transition: 160ms ease-out;
+        --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
+          Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         margin: 0;
-        padding: 1.5rem;
-        background: #0f172a;
-        color: #e5e7eb;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #0b1120 0, #020617 50%, #000 100%);
+        color: var(--text);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
       }
-      h1 {
-        margin-top: 0;
-        font-size: 1.6rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      h1 span.logo {
-        display: inline-flex;
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        background: radial-gradient(circle at 30% 20%, #38bdf8, #6366f1);
-        align-items: center;
-        justify-content: center;
-        font-size: 0.9rem;
-      }
+
       .layout {
         display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 1.5rem;
-        align-items: flex-start;
+        grid-template-columns: minmax(0, 2fr) minmax(360px, 460px);
+        min-height: 100vh;
       }
-      @media (max-width: 900px) {
+
+      @media (max-width: 960px) {
         .layout {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr);
         }
       }
-      .card {
-        background: #020617;
-        border-radius: 0.75rem;
-        padding: 1rem 1.2rem;
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.15);
+
+      .panel {
+        padding: 20px 24px 24px;
+        border-right: 1px solid var(--border);
       }
-      .card h2 {
-        margin-top: 0;
-        font-size: 1.1rem;
-        margin-bottom: 0.6rem;
+
+      @media (max-width: 960px) {
+        .panel {
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+        }
       }
-      .status-bar {
-        font-size: 0.85rem;
-        color: #9ca3af;
-        margin-bottom: 0.8rem;
+
+      .panel-right {
+        padding: 20px 24px 24px;
+      }
+
+      header {
         display: flex;
-        justify-content: space-between;
-        gap: 0.5rem;
-        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
       }
-      .pill {
+
+      .logo {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: radial-gradient(
+          circle at 30% 30%,
+          #22c55e 0,
+          #6ee7b7 20%,
+          #0f172a 60%,
+          #020617 100%
+        );
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.12rem 0.55rem;
-        border-radius: 999px;
-        background: rgba(15, 118, 110, 0.18);
-        color: #a5f3fc;
-        font-size: 0.75rem;
+        justify-content: center;
+        color: #e5e7eb;
+        font-size: 17px;
+        font-weight: 700;
+        box-shadow: 0 10px 30px rgba(34, 197, 94, 0.45);
       }
-      .pill-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: #22c55e;
-        box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.2);
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.85rem;
-      }
-      thead {
-        background: rgba(15, 23, 42, 0.8);
-      }
-      th,
-      td {
-        padding: 0.4rem 0.5rem;
-        border-bottom: 1px solid rgba(31, 41, 55, 0.9);
-        text-align: left;
-        vertical-align: top;
-      }
-      th {
+
+      h1 {
+        font-size: 20px;
         font-weight: 600;
+        letter-spacing: 0.02em;
+        margin: 0;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: var(--text-soft);
+        margin-top: 2px;
+      }
+
+      .top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .etag {
+        font-size: 11px;
+        color: var(--text-soft);
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.8);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .etag-label {
+        font-weight: 500;
         color: #9ca3af;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        margin-right: 6px;
       }
-      tr:hover td {
-        background: rgba(30, 64, 175, 0.25);
-      }
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: 0.8rem;
-        padding: 0.08rem 0.3rem;
-        border-radius: 0.25rem;
-        background: rgba(15, 23, 42, 0.9);
-        border: 1px solid rgba(55, 65, 81, 0.9);
-      }
-      .flag-enabled {
-        color: #bbf7d0;
-      }
-      .flag-disabled {
-        color: #fca5a5;
-      }
-      .badge-enabled,
-      .badge-disabled {
+
+      .badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
-        padding: 0.08rem 0.45rem;
+        gap: 6px;
         border-radius: 999px;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        font-size: 11px;
+        padding: 4px 9px;
+        background: #022c22;
+        color: #6ee7b7;
+        border: 1px solid rgba(16, 185, 129, 0.4);
       }
-      .badge-enabled {
-        background: rgba(22, 163, 74, 0.2);
-        color: #bbf7d0;
-      }
-      .badge-disabled {
-        background: rgba(185, 28, 28, 0.2);
-        color: #fecaca;
-      }
-      .badge-enabled span.dot,
-      .badge-disabled span.dot {
+
+      .badge-dot {
         width: 6px;
         height: 6px;
         border-radius: 999px;
-        background: currentColor;
+        background: #22c55e;
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35);
       }
-      .mono {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
+
+      .table-card {
+        margin-top: 12px;
+        border-radius: 16px;
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.98));
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        box-shadow: var(--shadow);
+        overflow: hidden;
       }
-      form {
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
-        font-size: 0.85rem;
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
       }
-      label {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
+
+      thead {
+        background: rgba(15, 23, 42, 0.96);
       }
-      input[type='text'],
-      textarea,
-      select {
-        background: #020617;
-        border-radius: 0.45rem;
-        border: 1px solid rgba(75, 85, 99, 0.8);
-        padding: 0.4rem 0.55rem;
-        color: #e5e7eb;
-        outline: none;
-        font-size: 0.85rem;
+
+      th,
+      td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.85);
       }
-      input[type='checkbox'] {
-        transform: scale(1.1);
+
+      th {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #9ca3af;
+        font-weight: 600;
+        background: rgba(15, 23, 42, 0.9);
       }
-      input[type='text']:focus,
-      textarea:focus,
-      select:focus {
-        border-color: #6366f1;
-        box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.6);
-      }
-      textarea {
-        min-height: 110px;
-        resize: vertical;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-      }
-      button {
-        border: none;
-        border-radius: 999px;
-        padding: 0.45rem 0.9rem;
-        font-size: 0.9rem;
+
+      tbody tr {
         cursor: pointer;
-        background: linear-gradient(135deg, #4f46e5, #0ea5e9);
-        color: white;
-        font-weight: 500;
+        transition: var(--transition);
+      }
+
+      tbody tr:hover {
+        background: rgba(15, 23, 42, 0.9);
+      }
+
+      tbody tr.selected {
+        background: rgba(8, 47, 73, 0.8);
+      }
+
+      .pill {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
+        gap: 6px;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
       }
-      button:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-      .small {
-        font-size: 0.75rem;
-        color: #9ca3af;
-      }
-      .error {
-        color: #fecaca;
-        font-size: 0.8rem;
-      }
-      .success {
+
+      .pill-green {
+        background: rgba(22, 163, 74, 0.16);
         color: #bbf7d0;
-        font-size: 0.8rem;
+        border: 1px solid rgba(34, 197, 94, 0.45);
+      }
+
+      .pill-red {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      .pill-env {
+        background: rgba(37, 99, 235, 0.12);
+        color: #bfdbfe;
+        border: 1px solid rgba(59, 130, 246, 0.65);
+      }
+
+      .pill-text {
+        max-width: 220px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+
+      .empty-state {
+        padding: 24px 16px;
+        text-align: center;
+        color: var(--text-soft);
+        font-size: 13px;
+      }
+
+      .code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+          'Courier New', monospace;
+        font-size: 12px;
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(31, 41, 55, 0.9);
+      }
+
+      /* Right side form */
+
+      .card {
+        border-radius: 16px;
+        background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 55%),
+          radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.18), transparent 60%),
+          rgba(15, 23, 42, 0.98);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        box-shadow: var(--shadow);
+        padding: 16px 18px 18px;
+      }
+
+      .card-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .card-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .chip-secondary {
+        font-size: 11px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        color: #cbd5f5;
+        background: rgba(15, 23, 42, 0.8);
+      }
+
+      .field-group {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .field-label {
+        font-size: 11px;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+      }
+
+      .field-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      input[type='text'],
+      select,
+      textarea {
+        width: 100%;
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        background: rgba(15, 23, 42, 0.96);
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: var(--transition);
+      }
+
+      input[type='text']:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 120px;
+        max-height: 280px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+          'Courier New', monospace;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 4px;
+      }
+
+      .switch-label {
+        font-size: 13px;
+        color: var(--text-soft);
+      }
+
+      .switch {
+        position: relative;
+        width: 40px;
+        height: 22px;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background-color: #111827;
+        border-radius: 999px;
+        transition: var(--transition);
+        border: 1px solid rgba(31, 41, 55, 0.9);
+      }
+
+      .slider:before {
+        position: absolute;
+        content: '';
+        height: 16px;
+        width: 16px;
+        left: 3px;
+        top: 2px;
+        border-radius: 999px;
+        background-color: #6b7280;
+        transition: var(--transition);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.7);
+      }
+
+      .switch input:checked + .slider {
+        background-color: rgba(22, 163, 74, 0.25);
+        border-color: rgba(34, 197, 94, 0.7);
+      }
+
+      .switch input:checked + .slider:before {
+        transform: translateX(16px);
+        background-color: #bbf7d0;
+      }
+
+      .helper-text {
+        font-size: 11px;
+        color: var(--text-soft);
+      }
+
+      .small-cols {
+        display: flex;
+        gap: 8px;
+      }
+
+      .small-cols > div {
+        flex: 1;
+      }
+
+      .status-bar {
+        margin-top: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-message {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .status-message span {
+        font-family: ui-monospace, SFMono-Regular;
+      }
+
+      .status-message.error {
+        color: #fecaca;
+      }
+
+      .status-message.success {
+        color: #bbf7d0;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      button {
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: var(--transition);
+        white-space: nowrap;
+      }
+
+      .btn-secondary {
+        background: rgba(15, 23, 42, 0.95);
+        color: var(--text-soft);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(17, 24, 39, 0.96);
+      }
+
+      .btn-primary {
+        background: radial-gradient(circle at 10% 0, #38bdf8 0, #0ea5e9 30%, #0369a1 100%);
+        color: white;
+        box-shadow: 0 8px 20px rgba(56, 189, 248, 0.45);
+      }
+
+      .btn-primary:hover {
+        filter: brightness(1.03);
+        transform: translateY(-0.5px);
+        box-shadow: 0 12px 26px rgba(56, 189, 248, 0.6);
+      }
+
+      .btn-primary:active {
+        transform: translateY(0);
+        box-shadow: 0 6px 18px rgba(56, 189, 248, 0.5);
       }
     </style>
   </head>
   <body>
-    <h1>
-      <span class="logo">fg</span>
-      go-flagship · Admin
-    </h1>
-
     <div class="layout">
-      <!-- LEFT: flags table -->
-      <section class="card">
-        <div class="status-bar">
-          <div id="status-text">Connecting…</div>
-          <div class="pill">
-            <span class="pill-dot"></span>
-            <span id="sse-state">SSE: connecting</span>
+      <!-- LEFT: Flags table -->
+      <div class="panel">
+        <header>
+          <div class="logo">fg</div>
+          <div>
+            <h1>go-flagship · Admin</h1>
+            <div class="subtitle">Live view of feature flags with SSE updates</div>
+          </div>
+        </header>
+
+        <div class="top-row">
+          <div class="etag" id="etagDisplay">
+            <span class="etag-label">ETag:</span>
+            <span id="etagValue">—</span>
+          </div>
+          <div class="badge" id="sseStatus">
+            <span class="badge-dot"></span>
+            <span id="sseStatusText">SSE: connecting…</span>
           </div>
         </div>
-        <h2>Flags</h2>
-        <div class="small">
-          Live snapshot from <code class="mono">/v1/flags/snapshot</code>. Updates automatically
-          when <code class="mono">/v1/flags</code> changes.
-        </div>
-        <div style="margin-top: 0.8rem; overflow: auto; max-height: 480px">
-          <table id="flags-table">
+
+        <div class="table-card">
+          <table>
             <thead>
               <tr>
-                <th>Key</th>
-                <th>Env</th>
-                <th>Status</th>
-                <th>Config</th>
-                <th>Updated</th>
+                <th style="width: 26%">Key</th>
+                <th style="width: 10%">Env</th>
+                <th style="width: 13%">Status</th>
+                <th style="width: 36%">Config</th>
+                <th style="width: 15%">Updated</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="flagsBody">
               <tr>
-                <td colspan="5" class="small">No flags loaded yet.</td>
+                <td colspan="5">
+                  <div class="empty-state">
+                    No flags loaded yet. Create one on the right and hit
+                    <span class="code">Save flag</span>.
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
-      </section>
+      </div>
 
-      <!-- RIGHT: create/update -->
-      <section class="card">
-        <h2>Create / Update flag</h2>
-        <p class="small">
-          Sends a <code class="mono">POST /v1/flags</code> request and triggers a live update via
-          SSE.
-        </p>
-
-        <form id="flag-form">
-          <label>
-            Key
-            <input id="key-input" type="text" required placeholder="e.g. banner_message" />
-          </label>
-
-          <label>
-            Environment
-            <input id="env-input" type="text" value="prod" required />
-          </label>
-
-          <label style="flex-direction: row; align-items: center; gap: 0.5rem">
-            <input id="enabled-input" type="checkbox" checked />
-            <span>Enabled</span>
-          </label>
-
-          <label>
-            Config (JSON)
-            <textarea id="config-input" spellcheck="false">
-{ "text": "Hello world" }
-          </textarea
-            >
-            <div class="small">
-              Must be valid JSON object. Example:
-              <code class="mono">{ "variant": "A", "limit": 10 }</code>
+      <!-- RIGHT: Editor -->
+      <div class="panel-right">
+        <div class="card">
+          <div class="card-title-row">
+            <div>
+              <div class="card-title">Create / Update flag</div>
+              <div class="subtitle" style="margin-top: 1px">
+                Uses <span class="code">POST /v1/flags</span> and triggers SSE update
+              </div>
             </div>
-          </label>
-
-          <label>
-            Admin API key
-            <input id="admin-key-input" type="text" value="admin-123" />
-            <div class="small">
-              Sent as <code class="mono">Authorization: Bearer &lt;key&gt;</code>
-            </div>
-          </label>
-
-          <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 0.5rem">
-            <button type="submit" id="submit-btn">
-              <span>Save flag</span>
-            </button>
-            <div id="form-message" class="small"></div>
+            <div class="chip-secondary" id="selectedFlagChip">New flag</div>
           </div>
-        </form>
-      </section>
+
+          <form id="flagForm">
+            <div class="field-group">
+              <label class="field-label">Key</label>
+              <input
+                type="text"
+                id="flagKey"
+                placeholder="e.g. banner_message"
+                autocomplete="off"
+              />
+              <div class="helper-text">
+                Flag identifier. Click a row in the table to load its key here.
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">Environment</label>
+              <select id="flagEnv">
+                <option value="prod">prod</option>
+                <option value="staging">staging</option>
+                <option value="dev">dev</option>
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">Description</label>
+              <input
+                type="text"
+                id="flagDesc"
+                placeholder="e.g. Homepage banner experiment"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="field-group">
+              <div class="switch-row">
+                <div class="switch-label">Enabled</div>
+                <label class="switch">
+                  <input type="checkbox" id="flagEnabled" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label">Config (JSON)</label>
+              <textarea id="flagConfig" spellcheck="false" autocomplete="off">
+{ "text": "Hello world" }</textarea
+              >
+              <div class="helper-text">
+                Must be valid JSON object. Example:
+                <span class="code">{ "variant": "A", "limit": 10 }</span>
+              </div>
+            </div>
+
+            <div class="field-group small-cols">
+              <div>
+                <label class="field-label">Rollout %</label>
+                <input type="text" id="flagRollout" value="100" />
+              </div>
+              <div>
+                <label class="field-label">Admin API key</label>
+                <input type="text" id="adminKey" value="admin-123" />
+                <div class="helper-text">
+                  Sent as <span class="code">Authorization: Bearer &lt;key&gt;</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="status-bar">
+              <div id="formStatus" class="status-message">Ready.</div>
+            </div>
+
+            <div class="btn-row">
+              <button type="button" class="btn-secondary" id="newFlagBtn">New flag</button>
+              <button type="submit" class="btn-primary">Save flag</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
 
-    <script type="module">
-      import { FlagshipClient } from './dist/flagshipClient.js';
-
-      const API_BASE = 'http://localhost:8080';
-
-      const statusText = document.getElementById('status-text');
-      const sseState = document.getElementById('sse-state');
-      const tableBody = document.querySelector('#flags-table tbody');
-      const form = document.getElementById('flag-form');
-      const keyInput = document.getElementById('key-input');
-      const envInput = document.getElementById('env-input');
-      const enabledInput = document.getElementById('enabled-input');
-      const configInput = document.getElementById('config-input');
-      const adminKeyInput = document.getElementById('admin-key-input');
-      const formMsg = document.getElementById('form-message');
-      const submitBtn = document.getElementById('submit-btn');
-
-      // --- SDK client (for SSE + snapshot) ---
-      const client = new FlagshipClient({ baseUrl: API_BASE });
-      window.client = client; // useful for DevTools
-
-      function setSSEState(text) {
-        sseState.textContent = text;
-      }
-
-      async function fetchSnapshotDirect() {
-        // Add a cache-busting param to avoid 304 from intermediary caches
-        const url = new URL(`${API_BASE}/v1/flags/snapshot`);
-        url.searchParams.set('ts', Date.now().toString());
-
-        const res = await fetch(url.toString(), {
-          // Avoid custom headers that trigger a CORS preflight; rely on cache: 'no-store' + ts param
-          cache: 'no-store',
-        });
-
-        // Gracefully handle 304 (not modified) if some cache adds If-None-Match
-        if (res.status === 304) {
-          return null;
+    <script>
+      // Determine API_BASE dynamically: use ?api_base=... query param if present, else hardcoded localhost:8080
+      function getApiBase() {
+        const params = new URLSearchParams(window.location.search);
+        const apiBaseParam = params.get('api_base');
+        if (apiBaseParam) {
+          // Validate the URL format
+          try {
+            const url = new URL(apiBaseParam);
+            // Only allow http and https protocols
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              console.warn('Invalid api_base protocol, falling back to default');
+              return 'http://localhost:8080';
+            }
+            return apiBaseParam;
+          } catch (e) {
+            console.warn('Invalid api_base URL format, falling back to default');
+            return 'http://localhost:8080';
+          }
         }
-        if (!res.ok) throw new Error('snapshot ' + res.status);
-        return res.json();
+        return 'http://localhost:8080';
+      }
+      const API_BASE = getApiBase();
+      const flagsBody = document.getElementById('flagsBody');
+      const etagValue = document.getElementById('etagValue');
+      const sseStatusText = document.getElementById('sseStatusText');
+      const sseStatusEl = document.getElementById('sseStatus');
+      const formStatus = document.getElementById('formStatus');
+      const selectedFlagChip = document.getElementById('selectedFlagChip');
+
+      const form = document.getElementById('flagForm');
+      const keyInput = document.getElementById('flagKey');
+      const envSelect = document.getElementById('flagEnv');
+      const descInput = document.getElementById('flagDesc');
+      const enabledInput = document.getElementById('flagEnabled');
+      const configInput = document.getElementById('flagConfig');
+      const rolloutInput = document.getElementById('flagRollout');
+      const adminKeyInput = document.getElementById('adminKey');
+      const newFlagBtn = document.getElementById('newFlagBtn');
+
+      let currentSnapshot = null;
+      let selectedKey = null;
+      let selectedEnv = null;
+      let es = null;
+
+      function setStatus(message, kind = 'info') {
+        formStatus.textContent = message;
+        formStatus.classList.remove('error', 'success');
+        if (kind === 'error') formStatus.classList.add('error');
+        else if (kind === 'success') formStatus.classList.add('success');
       }
 
-      function renderSnapshot(snapshot) {
-        const flags = snapshot.flags || {};
-        const keys = Object.keys(flags).sort();
-        tableBody.innerHTML = '';
-
-        if (keys.length === 0) {
-          const tr = document.createElement('tr');
-          const td = document.createElement('td');
-          td.colSpan = 5;
-          td.textContent = 'No flags defined yet.';
-          td.className = 'small';
-          tr.appendChild(td);
-          tableBody.appendChild(tr);
+      function setSSEBadge(connected) {
+        if (connected) {
+          sseStatusText.textContent = 'SSE: live';
+          sseStatusEl.style.background = 'rgba(16,185,129,0.16)';
         } else {
-          keys.forEach((k) => {
-            const f = flags[k];
-            const tr = document.createElement('tr');
-
-            const tdKey = document.createElement('td');
-            tdKey.textContent = k;
-            tdKey.className = 'mono';
-            tr.appendChild(tdKey);
-
-            const tdEnv = document.createElement('td');
-            tdEnv.textContent = f.env || '-';
-            tdEnv.className = 'mono';
-            tr.appendChild(tdEnv);
-
-            const tdStatus = document.createElement('td');
-            const badge = document.createElement('span');
-            const dot = document.createElement('span');
-            dot.className = 'dot';
-            badge.appendChild(dot);
-            badge.appendChild(document.createTextNode(f.enabled ? 'ENABLED' : 'DISABLED'));
-            badge.className = f.enabled ? 'badge-enabled' : 'badge-disabled';
-            tdStatus.appendChild(badge);
-            tr.appendChild(tdStatus);
-
-            const tdCfg = document.createElement('td');
-            tdCfg.textContent = f.config ? JSON.stringify(f.config) : '{}';
-            tdCfg.className = 'mono';
-            tr.appendChild(tdCfg);
-
-            const tdUpd = document.createElement('td');
-            tdUpd.className = 'mono small';
-            tdUpd.textContent = f.updated_at || f.updatedAt || '-';
-            tr.appendChild(tdUpd);
-
-            tableBody.appendChild(tr);
-          });
-        }
-
-        statusText.textContent = `ETag: ${snapshot.etag || '-'} · ${keys.length} flags`;
-      }
-
-      async function reloadSnapshot() {
-        try {
-          const snap = await fetchSnapshotDirect();
-          if (snap) {
-            renderSnapshot(snap);
-          }
-        } catch (err) {
-          console.error(err);
-          statusText.textContent = 'Failed to load snapshot';
+          sseStatusText.textContent = 'SSE: disconnected';
+          sseStatusEl.style.background = 'rgba(248,113,113,0.12)';
         }
       }
 
-      // --- Form handling ---
-      form.addEventListener('submit', async (ev) => {
-        ev.preventDefault();
-        formMsg.textContent = '';
-        formMsg.className = 'small';
-        submitBtn.disabled = true;
+      function clearTable() {
+        flagsBody.innerHTML = `
+        <tr>
+          <td colspan="5">
+            <div class="empty-state">
+              No flags loaded yet. Create one on the right and hit <span class="code">Save flag</span>.
+            </div>
+          </td>
+        </tr>`;
+      }
 
-        let cfg;
+      function formatDate(ts) {
+        if (!ts) return '—';
         try {
-          const raw = configInput.value.trim();
-          cfg = raw ? JSON.parse(raw) : {};
-          if (typeof cfg !== 'object' || Array.isArray(cfg)) {
-            throw new Error('Config must be a JSON object');
-          }
-        } catch (e) {
-          formMsg.textContent = 'Invalid JSON in config: ' + e.message;
-          formMsg.classList.add('error');
-          submitBtn.disabled = false;
+          const d = new Date(ts);
+          return d.toLocaleString();
+        } catch {
+          return ts;
+        }
+      }
+
+      function shortConfig(cfg) {
+        try {
+          const str = JSON.stringify(cfg);
+          if (str.length <= 60) return str;
+          return str.slice(0, 57) + '…';
+        } catch {
+          return String(cfg);
+        }
+      }
+
+      function createPillCell(text, className) {
+        const td = document.createElement('td');
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        td.appendChild(span);
+        return td;
+      }
+
+      function renderSnapshot() {
+        if (!currentSnapshot || !currentSnapshot.flags) {
+          clearTable();
+          etagValue.textContent = currentSnapshot?.etag || '—';
           return;
         }
 
-        const payload = {
-          key: keyInput.value.trim(),
-          env: envInput.value.trim(),
-          enabled: !!enabledInput.checked,
-          config: cfg,
+        // Convert flags object to array
+        const flagsArray = Object.values(currentSnapshot.flags);
+
+        if (flagsArray.length === 0) {
+          clearTable();
+          etagValue.textContent = currentSnapshot.etag || '—';
+          return;
+        }
+
+        flagsBody.innerHTML = '';
+        etagValue.textContent = currentSnapshot.etag || '—';
+
+        flagsArray.forEach((f) => {
+          const tr = document.createElement('tr');
+          if (f.key === selectedKey && f.env === selectedEnv) {
+            tr.classList.add('selected');
+          }
+
+          // Create cells safely to avoid XSS
+          tr.appendChild(createPillCell(f.key, 'pill-text'));
+          tr.appendChild(createPillCell(f.env, 'pill pill-env'));
+          tr.appendChild(
+            createPillCell(
+              f.enabled ? 'Enabled' : 'Disabled',
+              'pill ' + (f.enabled ? 'pill-green' : 'pill-red')
+            )
+          );
+          tr.appendChild(createPillCell(shortConfig(f.config), 'pill-text'));
+
+          const tdUpdated = document.createElement('td');
+          tdUpdated.textContent = formatDate(f.updatedAt);
+          tr.appendChild(tdUpdated);
+
+          tr.addEventListener('click', () => {
+            selectedKey = f.key;
+            selectedEnv = f.env;
+            fillFormFromFlag(f);
+            renderSnapshot(); // refresh highlight
+          });
+
+          flagsBody.appendChild(tr);
+        });
+      }
+
+      function fillFormFromFlag(flag) {
+        keyInput.value = flag.key;
+        envSelect.value = flag.env || 'prod';
+        descInput.value = flag.description || '';
+        enabledInput.checked = !!flag.enabled;
+        rolloutInput.value = flag.rollout != null ? String(flag.rollout) : '100';
+        try {
+          configInput.value = JSON.stringify(flag.config ?? {}, null, 2);
+        } catch {
+          configInput.value = '{}';
+        }
+        selectedFlagChip.textContent = `Editing: ${flag.key} [${flag.env}]`;
+        setStatus('Loaded flag into form.');
+      }
+
+      function clearForm() {
+        selectedKey = null;
+        selectedEnv = null;
+        keyInput.value = '';
+        envSelect.value = 'prod';
+        descInput.value = '';
+        enabledInput.checked = true;
+        configInput.value = '{ "text": "Hello world" }';
+        rolloutInput.value = '100';
+        selectedFlagChip.textContent = 'New flag';
+        setStatus('Ready for new flag.');
+        renderSnapshot(); // clear selection highlight
+      }
+
+      async function fetchSnapshot() {
+        try {
+          const res = await fetch(API_BASE + '/v1/flags/snapshot');
+          if (!res.ok) {
+            throw new Error('snapshot ' + res.status);
+          }
+          currentSnapshot = await res.json();
+          renderSnapshot();
+          setStatus('Snapshot loaded.');
+        } catch (err) {
+          console.error('snapshot error', err);
+          setStatus('Failed to load snapshot: ' + err.message, 'error');
+        }
+      }
+
+      function attachSSE() {
+        if (es) es.close();
+
+        try {
+          es = new EventSource(API_BASE + '/v1/flags/stream');
+        } catch (err) {
+          console.error('EventSource failed', err);
+          setSSEBadge(false);
+          return;
+        }
+
+        es.addEventListener('init', async (e) => {
+          try {
+            const data = JSON.parse(e.data || '{}');
+            console.log('[admin] SSE init, etag:', data.etag || 'none');
+            await fetchSnapshot();
+            setSSEBadge(true);
+          } catch (err) {
+            console.error('SSE init error', err);
+          }
+        });
+
+        es.addEventListener('update', async (e) => {
+          try {
+            const data = JSON.parse(e.data || '{}');
+            if (typeof data.etag === 'undefined') {
+              console.warn('[admin] SSE update event missing etag');
+              return;
+            }
+            console.log('[admin] SSE update received');
+            await fetchSnapshot();
+          } catch (err) {
+            console.error('SSE update parse error', err);
+          }
+        });
+
+        es.addEventListener('open', () => {
+          console.log('[admin] SSE connection opened');
+          setSSEBadge(true);
+        });
+
+        es.onerror = (err) => {
+          console.error('SSE error', err);
+          setSSEBadge(false);
+          sseStatusText.textContent = 'SSE: reconnecting…';
+        };
+      }
+
+      // Clean up EventSource connection on page unload
+      function cleanupEventSource() {
+        if (es) {
+          es.close();
+          es = null;
+        }
+      }
+
+      window.addEventListener('beforeunload', cleanupEventSource);
+      window.addEventListener('pagehide', cleanupEventSource);
+      window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          cleanupEventSource();
+        }
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const key = keyInput.value.trim();
+        const env = envSelect.value.trim() || 'prod';
+        const desc = descInput.value.trim();
+        const enabled = !!enabledInput.checked;
+        const rolloutStr = rolloutInput.value.trim() || '100';
+        const adminKey = adminKeyInput.value.trim();
+
+        if (!key) {
+          setStatus('Key is required.', 'error');
+          return;
+        }
+        if (!adminKey) {
+          setStatus('Admin API key is required.', 'error');
+          return;
+        }
+
+        let rollout = Number(rolloutStr);
+        if (!Number.isFinite(rollout) || rollout < 0 || rollout > 100) {
+          setStatus('Rollout must be a number between 0 and 100.', 'error');
+          return;
+        }
+
+        let config;
+        try {
+          const raw = configInput.value.trim() || '{}';
+          config = JSON.parse(raw);
+          if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+            setStatus('Config must be a JSON object (not array, not null).', 'error');
+            return;
+          }
+        } catch (err) {
+          setStatus('Config JSON invalid: ' + err.message, 'error');
+          return;
+        }
+
+        const body = {
+          key,
+          description: desc,
+          env,
+          enabled,
+          rollout,
+          config,
         };
 
         try {
-          const res = await fetch(`${API_BASE}/v1/flags`, {
+          setStatus('Saving flag…');
+          const res = await fetch(API_BASE + '/v1/flags', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: 'Bearer ' + adminKeyInput.value.trim(),
+              Authorization: 'Bearer ' + adminKey,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(body),
           });
-          if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(`HTTP ${res.status}: ${txt}`);
+
+          let json;
+          try {
+            json = await res.json();
+          } catch (parseErr) {
+            console.error('Failed to parse response JSON:', parseErr);
+            setStatus('Save failed: Invalid JSON response from server.', 'error');
+            return;
           }
-          const data = await res.json();
-          formMsg.textContent = 'Saved. New ETag: ' + (data.etag || '(none)');
-          formMsg.classList.add('success');
-          // Snapshot will be refreshed automatically via SSE update,
-          // but we also reload once explicitly for responsiveness.
-          await reloadSnapshot();
+
+          if (!res.ok || json.ok === false) {
+            const msg = json.message || 'HTTP ' + res.status;
+            setStatus('Save failed: ' + msg, 'error');
+            console.error('save error', res.status, json);
+            return;
+          }
+
+          const etag = json.etag || '(no etag in response)';
+          // Update selected key/env to highlight the saved flag
+          selectedKey = key;
+          selectedEnv = env;
+          setStatus('Flag saved. Waiting for SSE refresh (etag ' + etag + ').', 'success');
         } catch (err) {
-          console.error(err);
-          formMsg.textContent = 'Error: ' + err.message;
-          formMsg.classList.add('error');
-        } finally {
-          submitBtn.disabled = false;
+          console.error('save error', err);
+          setStatus('Save failed: ' + err.message, 'error');
         }
       });
 
-      // --- Wire up SDK events ---
-      client.on('ready', async () => {
-        setSSEState('SSE: connected');
-        await reloadSnapshot();
+      newFlagBtn.addEventListener('click', () => {
+        clearForm();
       });
 
-      client.on('update', async (etag) => {
-        console.log('[admin] live update etag =', etag);
-        setSSEState('SSE: live');
-        await reloadSnapshot();
-      });
-
-      client.on('error', (err) => {
-        console.error('[admin] SDK error', err);
-        setSSEState('SSE: error');
-      });
-
-      // Initialize
-      (async () => {
-        try {
-          await client.init();
-        } catch (err) {
-          console.error(err);
-          statusText.textContent = 'Failed to initialize SDK';
-          setSSEState('SSE: failed');
-        }
+      (async function init() {
+        await fetchSnapshot();
+        attachSSE();
+        clearForm(); // but keeps snapshot/table
       })();
     </script>
   </body>

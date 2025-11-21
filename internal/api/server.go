@@ -63,6 +63,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/v1/flags/stream", s.handleStream)
 	})
 
+	// Serve static files from ./sdk directory
+	// This allows accessing admin.html and index.html from the API server
+	fileServer := http.FileServer(http.Dir("./sdk"))
+	r.Handle("/*", fileServer)
+
 	return r
 }
 
