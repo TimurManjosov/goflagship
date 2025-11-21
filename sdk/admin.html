@@ -701,6 +701,15 @@
         }
       }
 
+      function createPillCell(text, className) {
+        const td = document.createElement('td');
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        td.appendChild(span);
+        return td;
+      }
+
       function renderSnapshot() {
         if (
           !currentSnapshot ||
@@ -722,37 +731,16 @@
           }
 
           // Create cells safely to avoid XSS
-          const tdKey = document.createElement('td');
-          const spanKey = document.createElement('span');
-          spanKey.className = 'pill-text';
-          spanKey.textContent = f.key;
-          tdKey.appendChild(spanKey);
-
-          const tdEnv = document.createElement('td');
-          const spanEnv = document.createElement('span');
-          spanEnv.className = 'pill pill-env';
-          spanEnv.textContent = f.env;
-          tdEnv.appendChild(spanEnv);
-
-          const tdEnabled = document.createElement('td');
-          const spanEnabled = document.createElement('span');
-          spanEnabled.className = 'pill ' + (f.enabled ? 'pill-green' : 'pill-red');
-          spanEnabled.textContent = f.enabled ? 'Enabled' : 'Disabled';
-          tdEnabled.appendChild(spanEnabled);
-
-          const tdConfig = document.createElement('td');
-          const spanConfig = document.createElement('span');
-          spanConfig.className = 'pill-text';
-          spanConfig.textContent = shortConfig(f.config);
-          tdConfig.appendChild(spanConfig);
+          tr.appendChild(createPillCell(f.key, 'pill-text'));
+          tr.appendChild(createPillCell(f.env, 'pill pill-env'));
+          tr.appendChild(createPillCell(
+            f.enabled ? 'Enabled' : 'Disabled',
+            'pill ' + (f.enabled ? 'pill-green' : 'pill-red')
+          ));
+          tr.appendChild(createPillCell(shortConfig(f.config), 'pill-text'));
 
           const tdUpdated = document.createElement('td');
           tdUpdated.textContent = formatDate(f.updatedAt);
-
-          tr.appendChild(tdKey);
-          tr.appendChild(tdEnv);
-          tr.appendChild(tdEnabled);
-          tr.appendChild(tdConfig);
           tr.appendChild(tdUpdated);
 
           tr.addEventListener('click', () => {
@@ -856,12 +844,12 @@
           setSSEBadge(false);
           sseStatusText.textContent = 'SSE: reconnecting…';
         };
-
-        // Clean up EventSource connection on page unload
-        window.addEventListener('beforeunload', () => {
-          if (es) es.close();
-        });
       }
+
+      // Clean up EventSource connection on page unload
+      window.addEventListener('beforeunload', () => {
+        if (es) es.close();
+      });
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
