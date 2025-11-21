@@ -625,7 +625,28 @@
     </div>
 
     <script>
-      const API_BASE = 'http://localhost:8080';
+      // Determine API_BASE dynamically: use ?api_base=... query param if present, else window.location.origin
+      function getApiBase() {
+        const params = new URLSearchParams(window.location.search);
+        const apiBaseParam = params.get('api_base');
+        if (apiBaseParam) {
+          // Validate the URL format
+          try {
+            const url = new URL(apiBaseParam);
+            // Only allow http and https protocols
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+              console.warn('Invalid api_base protocol, falling back to window.location.origin');
+              return window.location.origin;
+            }
+            return apiBaseParam;
+          } catch (e) {
+            console.warn('Invalid api_base URL format, falling back to window.location.origin');
+            return window.location.origin;
+          }
+        }
+        return window.location.origin;
+      }
+      const API_BASE = getApiBase();
       const flagsBody = document.getElementById('flagsBody');
       const etagValue = document.getElementById('etagValue');
       const sseStatusText = document.getElementById('sseStatusText');
@@ -696,6 +717,15 @@
         }
       }
 
+      function createPillCell(text, className) {
+        const td = document.createElement('td');
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        td.appendChild(span);
+        return td;
+      }
+
       function renderSnapshot() {
         if (
           !currentSnapshot ||
@@ -716,17 +746,18 @@
             tr.classList.add('selected');
           }
 
-          tr.innerHTML = `
-          <td><span class="pill-text">${f.key}</span></td>
-          <td><span class="pill pill-env">${f.env}</span></td>
-          <td>
-            <span class="pill ${f.enabled ? 'pill-green' : 'pill-red'}">
-              ${f.enabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </td>
-          <td><span class="pill-text">${shortConfig(f.config)}</span></td>
-          <td>${formatDate(f.updatedAt)}</td>
-        `;
+          // Create cells safely to avoid XSS
+          tr.appendChild(createPillCell(f.key, 'pill-text'));
+          tr.appendChild(createPillCell(f.env, 'pill pill-env'));
+          tr.appendChild(createPillCell(
+            f.enabled ? 'Enabled' : 'Disabled',
+            'pill ' + (f.enabled ? 'pill-green' : 'pill-red')
+          ));
+          tr.appendChild(createPillCell(shortConfig(f.config), 'pill-text'));
+
+          const tdUpdated = document.createElement('td');
+          tdUpdated.textContent = formatDate(f.updatedAt);
+          tr.appendChild(tdUpdated);
 
           tr.addEventListener('click', () => {
             selectedKey = f.key;
@@ -797,7 +828,7 @@
         es.addEventListener('init', async (e) => {
           try {
             const data = JSON.parse(e.data || '{}');
-            console.log('[admin] SSE init', data);
+            console.log('[admin] SSE init, etag:', data.etag || 'none');
             await fetchSnapshot();
             setSSEBadge(true);
           } catch (err) {
@@ -808,18 +839,44 @@
         es.addEventListener('update', async (e) => {
           try {
             const data = JSON.parse(e.data || '{}');
-            console.log('[admin] SSE update etag =', data.etag);
+            if (typeof data.etag === 'undefined') {
+              console.warn('[admin] SSE update event missing etag');
+              return;
+            }
+            console.log('[admin] SSE update received');
             await fetchSnapshot();
           } catch (err) {
             console.error('SSE update parse error', err);
           }
         });
 
+        es.addEventListener('open', () => {
+          console.log('[admin] SSE connection opened');
+          setSSEBadge(true);
+        });
+
         es.onerror = (err) => {
           console.error('SSE error', err);
           setSSEBadge(false);
+          sseStatusText.textContent = 'SSE: reconnecting…';
         };
       }
+
+      // Clean up EventSource connection on page unload
+      function cleanupEventSource() {
+        if (es) {
+          es.close();
+          es = null;
+        }
+      }
+      
+      window.addEventListener('beforeunload', cleanupEventSource);
+      window.addEventListener('pagehide', cleanupEventSource);
+      window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          cleanupEventSource();
+        }
+      });
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -879,7 +936,14 @@
             body: JSON.stringify(body),
           });
 
-          const json = await res.json().catch(() => ({}));
+          let json;
+          try {
+            json = await res.json();
+          } catch (parseErr) {
+            console.error('Failed to parse response JSON:', parseErr);
+            setStatus('Save failed: Invalid JSON response from server.', 'error');
+            return;
+          }
 
           if (!res.ok || json.ok === false) {
             const msg = json.message || 'HTTP ' + res.status;
@@ -889,6 +953,9 @@
           }
 
           const etag = json.etag || '(no etag in response)';
+          // Update selected key/env to highlight the saved flag
+          selectedKey = key;
+          selectedEnv = env;
           setStatus('Flag saved. Waiting for SSE refresh (etag ' + etag + ').', 'success');
         } catch (err) {
           console.error('save error', err);
