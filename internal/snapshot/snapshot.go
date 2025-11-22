@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
+	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -47,7 +48,7 @@ func textToString(t pgtype.Text) string {
     return ""
 }
 
-func store(s *Snapshot) { atomic.StorePointer(&current, unsafe.Pointer(s)) }
+func storeSnapshot(s *Snapshot) { atomic.StorePointer(&current, unsafe.Pointer(s)) }
 
 func BuildFromRows(rows []dbgen.Flag) *Snapshot {
     flags := make(map[string]FlagView, len(rows))
@@ -74,8 +75,29 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
     return &Snapshot{ETag: etag, Flags: flags, UpdatedAt: time.Now().UTC()}
 }
 
+// BuildFromFlags creates a snapshot from store.Flag objects.
+func BuildFromFlags(flags []store.Flag) *Snapshot {
+    flagMap := make(map[string]FlagView, len(flags))
+    for _, f := range flags {
+        flagMap[f.Key] = FlagView{
+            Key:         f.Key,
+            Description: f.Description,
+            Enabled:     f.Enabled,
+            Rollout:     f.Rollout,
+            Expression:  f.Expression,
+            Config:      f.Config,
+            Env:         f.Env,
+            UpdatedAt:   f.UpdatedAt,
+        }
+    }
+    blob, _ := json.Marshal(flagMap)
+    sum := sha256.Sum256(blob)
+    etag := `W/"` + hex.EncodeToString(sum[:]) + `"`
+    return &Snapshot{ETag: etag, Flags: flagMap, UpdatedAt: time.Now().UTC()}
+}
+
 func Update(s *Snapshot) {
-	store(s)
+	storeSnapshot(s)
 	publishUpdate(s.ETag) // <— notify SSE listeners
 }
 

@@ -13,9 +13,8 @@ import (
 
 	"github.com/TimurManjosov/goflagship/internal/api"
 	"github.com/TimurManjosov/goflagship/internal/config"
-	mydb "github.com/TimurManjosov/goflagship/internal/db"
-	"github.com/TimurManjosov/goflagship/internal/repo"
 	"github.com/TimurManjosov/goflagship/internal/snapshot"
+	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -31,28 +30,28 @@ func main() {
 	telemetry.Init()
 
 	ctx := context.Background()
-	pool, err := mydb.NewPool(ctx, cfg.DB_DSN)
-	if err != nil {
-		log.Fatalf("db: %v", err)
-	}
-	defer pool.Close()
 
-	rp := repo.New(pool)
+	// Create store based on configuration
+	st, err := store.NewStore(ctx, cfg.StoreType, cfg.DB_DSN)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer st.Close()
 
 	// initial snapshot
-	rows, err := rp.GetAllFlags(ctx, cfg.Env)
+	flags, err := st.GetAllFlags(ctx, cfg.Env)
 	if err != nil {
 		log.Fatalf("load flags: %v", err)
 	}
-	s := snapshot.BuildFromRows(rows)
+	s := snapshot.BuildFromFlags(flags)
 	snapshot.Update(s)
 	telemetry.SnapshotFlags.Set(float64(len(s.Flags)))
-	log.Printf("snapshot: %d flags, etag=%s", len(s.Flags), s.ETag)
+	log.Printf("snapshot: %d flags, etag=%s (store_type=%s)", len(s.Flags), s.ETag, cfg.StoreType)
 
 	// ---- API server (:8080) ----
 	apiSrv := &http.Server{
 		Addr:         cfg.HTTPAddr,
-		Handler:      api.NewServer(rp, cfg.Env, cfg.AdminAPIKey).Router(),
+		Handler:      api.NewServer(st, cfg.Env, cfg.AdminAPIKey).Router(),
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 0,                 // keep SSE connections alive
 		IdleTimeout:  60 * time.Second,
