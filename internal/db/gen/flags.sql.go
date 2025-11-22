@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteFlag = `-- name: DeleteFlag :exec
+DELETE FROM flags WHERE key = $1 AND env = $2
+`
+
+type DeleteFlagParams struct {
+	Key string `json:"key"`
+	Env string `json:"env"`
+}
+
+func (q *Queries) DeleteFlag(ctx context.Context, arg DeleteFlagParams) error {
+	_, err := q.db.Exec(ctx, deleteFlag, arg.Key, arg.Env)
+	return err
+}
+
 const getAllFlags = `-- name: GetAllFlags :many
 SELECT id, key, description, enabled, rollout, expression, config, env, updated_at FROM flags WHERE env = $1 ORDER BY key
 `

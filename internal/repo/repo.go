@@ -18,3 +18,7 @@ func (r *Repo) GetAllFlags(ctx context.Context, env string) ([]dbgen.Flag, error
 func (r *Repo) UpsertFlag(ctx context.Context, p dbgen.UpsertFlagParams) error {
     return r.Q.UpsertFlag(ctx, p)
 }
+
+func (r *Repo) DeleteFlag(ctx context.Context, key, env string) error {
+	return r.Q.DeleteFlag(ctx, dbgen.DeleteFlagParams{Key: key, Env: env})
+}
