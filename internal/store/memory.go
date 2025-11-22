@@ -27,7 +27,8 @@ func (m *MemoryStore) GetAllFlags(ctx context.Context, env string) ([]Flag, erro
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]Flag, 0)
+	// Preallocate with reasonable capacity estimate
+	result := make([]Flag, 0, len(m.flags)/2)
 	for _, flag := range m.flags {
 		if flag.Env == env {
 			result = append(result, flag)

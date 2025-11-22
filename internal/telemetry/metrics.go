@@ -26,14 +26,13 @@ var (
 	)
 
 	SSEClients = prometheus.NewGauge(prometheus.GaugeOpts{
-    Name: "sse_clients",
-    Help: "Number of currently connected SSE clients",
+		Name: "sse_clients",
+		Help: "Number of currently connected SSE clients",
 	})
-  SnapshotFlags = prometheus.NewGauge(prometheus.GaugeOpts{
-    Name: "snapshot_flags",
-    Help: "Number of flags currently in the in-memory snapshot",
+	SnapshotFlags = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "snapshot_flags",
+		Help: "Number of flags currently in the in-memory snapshot",
 	})
-
 )
 
 func Init() {

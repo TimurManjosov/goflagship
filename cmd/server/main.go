@@ -53,7 +53,7 @@ func main() {
 		Addr:         cfg.HTTPAddr,
 		Handler:      api.NewServer(st, cfg.Env, cfg.AdminAPIKey).Router(),
 		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 0,                 // keep SSE connections alive
+		WriteTimeout: 0, // keep SSE connections alive
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {

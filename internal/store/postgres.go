@@ -11,6 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	emptyJSONObject = "{}"
+)
+
 // PostgresStore is a PostgreSQL implementation of the Store interface.
 // It wraps the existing sqlc-generated queries for database operations.
 type PostgresStore struct {
@@ -74,7 +78,7 @@ func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) err
 		}
 		configBytes = b
 	} else {
-		configBytes = []byte("{}")
+		configBytes = []byte(emptyJSONObject)
 	}
 
 	dbParams := dbgen.UpsertFlagParams{

@@ -28,7 +28,6 @@ func Load() (*Config, error) {
 	v.SetDefault("METRICS_ADDR", ":9090")
 	v.SetDefault("STORE_TYPE", "postgres")
 
-
 	return &Config{
 		AppEnv:       v.GetString("APP_ENV"),
 		HTTPAddr:     v.GetString("APP_HTTP_ADDR"),

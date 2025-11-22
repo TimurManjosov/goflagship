@@ -9,7 +9,9 @@ import (
 
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	cfg.MaxConns = 10
 	cfg.MinConns = 1
 	cfg.HealthCheckPeriod = 30 * time.Second
