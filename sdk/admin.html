@@ -480,6 +480,17 @@
         transform: translateY(0);
         box-shadow: 0 6px 18px rgba(56, 189, 248, 0.5);
       }
+
+      .btn-danger {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      .btn-danger:hover {
+        background: rgba(248, 113, 113, 0.18);
+        border-color: rgba(248, 113, 113, 0.8);
+      }
     </style>
   </head>
   <body>
@@ -617,7 +628,7 @@
 
             <div class="btn-row">
               <button type="button" class="btn-secondary" id="newFlagBtn">New flag</button>
-              <button type="button" class="btn-secondary" id="deleteFlagBtn" style="background: rgba(248, 113, 113, 0.12); color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.6);">Delete flag</button>
+              <button type="button" class="btn-secondary btn-danger" id="deleteFlagBtn">Delete flag</button>
               <button type="submit" class="btn-primary">Save flag</button>
             </div>
           </form>
