@@ -10,7 +10,7 @@ type Config struct {
 	AdminAPIKey  string
 	ClientAPIKey string
 	MetricsAddr  string
-
+	StoreType    string
 }
 
 func Load() (*Config, error) {
@@ -26,7 +26,7 @@ func Load() (*Config, error) {
 	v.SetDefault("ADMIN_API_KEY", "admin-123")
 	v.SetDefault("CLIENT_API_KEY", "client-xyz")
 	v.SetDefault("METRICS_ADDR", ":9090")
-
+	v.SetDefault("STORE_TYPE", "postgres")
 
 	return &Config{
 		AppEnv:       v.GetString("APP_ENV"),
@@ -36,6 +36,6 @@ func Load() (*Config, error) {
 		AdminAPIKey:  v.GetString("ADMIN_API_KEY"),
 		ClientAPIKey: v.GetString("CLIENT_API_KEY"),
 		MetricsAddr:  v.GetString("METRICS_ADDR"),
-
+		StoreType:    v.GetString("STORE_TYPE"),
 	}, nil
 }

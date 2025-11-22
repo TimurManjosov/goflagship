@@ -14,21 +14,19 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/jackc/pgx/v5/pgtype"
 
-	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
-	"github.com/TimurManjosov/goflagship/internal/repo"
 	"github.com/TimurManjosov/goflagship/internal/snapshot"
+	"github.com/TimurManjosov/goflagship/internal/store"
 )
 
 type Server struct {
-	repo        *repo.Repo
+	store       store.Store
 	env         string
 	adminAPIKey string
 }
 
-func NewServer(r *repo.Repo, env, adminKey string) *Server {
-	return &Server{repo: r, env: env, adminAPIKey: adminKey}
+func NewServer(s store.Store, env, adminKey string) *Server {
+	return &Server{store: s, env: env, adminAPIKey: adminKey}
 }
 
 func (s *Server) Router() http.Handler {
@@ -193,31 +191,18 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// encode config -> []byte
-	var cfgBytes []byte
-	if req.Config != nil {
-		b, err := json.Marshal(req.Config)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "config must be JSON object")
-			return
-		}
-		cfgBytes = b
-	} else {
-		cfgBytes = []byte("{}")
-	}
-
-	// upsert via sqlc
-	params := dbgen.UpsertFlagParams{
+	// upsert via store
+	params := store.UpsertParams{
 		Key:         req.Key,
-		Description: pgtype.Text{String: req.Description, Valid: true},
+		Description: req.Description,
 		Enabled:     req.Enabled,
 		Rollout:     req.Rollout,
-		Expression:  req.Expression, // *string ok
-		Config:      cfgBytes,       // []byte
+		Expression:  req.Expression,
+		Config:      req.Config,
 		Env:         env,
 	}
-	if err := s.repo.UpsertFlag(r.Context(), params); err != nil {
-		writeError(w, http.StatusInternalServerError, "db upsert failed")
+	if err := s.store.UpsertFlag(r.Context(), params); err != nil {
+		writeError(w, http.StatusInternalServerError, "store upsert failed")
 		return
 	}
 
@@ -249,9 +234,9 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete from database
-	if err := s.repo.DeleteFlag(r.Context(), key, env); err != nil {
-		writeError(w, http.StatusInternalServerError, "db delete failed")
+	// Delete from store
+	if err := s.store.DeleteFlag(r.Context(), key, env); err != nil {
+		writeError(w, http.StatusInternalServerError, "store delete failed")
 		return
 	}
 
@@ -270,11 +255,11 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 
 // RebuildSnapshot loads flags for env and swaps the atomic snapshot.
 func (s *Server) RebuildSnapshot(ctx context.Context, env string) error {
-	rows, err := s.repo.GetAllFlags(ctx, env)
+	flags, err := s.store.GetAllFlags(ctx, env)
 	if err != nil {
 		return err
 	}
-	snap := snapshot.BuildFromRows(rows)
+	snap := snapshot.BuildFromFlags(flags)
 	snapshot.Update(snap)
 	telemetry.SnapshotFlags.Set(float64(len(snap.Flags)))
 	return nil

@@ -15,22 +15,21 @@ var (
 
 // Subscribe registers a listener and returns its channel and an unsubscribe func.
 func Subscribe() (subCh, func()) {
-  ch := make(subCh, 1)
-  mu.Lock()
-  subs[ch] = struct{}{}
-  telemetry.SSEClients.Inc()     // +1
-  mu.Unlock()
+	ch := make(subCh, 1)
+	mu.Lock()
+	subs[ch] = struct{}{}
+	telemetry.SSEClients.Inc() // +1
+	mu.Unlock()
 
-  unsub := func() {
-    mu.Lock()
-    delete(subs, ch)
-    close(ch)
-    telemetry.SSEClients.Dec()   // -1
-    mu.Unlock()
-  }
-  return ch, unsub
+	unsub := func() {
+		mu.Lock()
+		delete(subs, ch)
+		close(ch)
+		telemetry.SSEClients.Dec() // -1
+		mu.Unlock()
+	}
+	return ch, unsub
 }
-
 
 // publishUpdate notifies all listeners (non-blocking).
 func publishUpdate(etag string) {
