@@ -480,6 +480,17 @@
         transform: translateY(0);
         box-shadow: 0 6px 18px rgba(56, 189, 248, 0.5);
       }
+
+      .btn-danger {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      .btn-danger:hover {
+        background: rgba(248, 113, 113, 0.18);
+        border-color: rgba(248, 113, 113, 0.8);
+      }
     </style>
   </head>
   <body>
@@ -617,6 +628,7 @@
 
             <div class="btn-row">
               <button type="button" class="btn-secondary" id="newFlagBtn">New flag</button>
+              <button type="button" class="btn-secondary btn-danger" id="deleteFlagBtn">Delete flag</button>
               <button type="submit" class="btn-primary">Save flag</button>
             </div>
           </form>
@@ -972,6 +984,66 @@
 
       newFlagBtn.addEventListener('click', () => {
         clearForm();
+      });
+
+      const deleteFlagBtn = document.getElementById('deleteFlagBtn');
+      deleteFlagBtn.addEventListener('click', async () => {
+        const key = keyInput.value.trim();
+        const env = envSelect.value.trim() || 'prod';
+        const adminKey = adminKeyInput.value.trim();
+
+        if (!key) {
+          setStatus('Key is required to delete a flag.', 'error');
+          return;
+        }
+        if (!adminKey) {
+          setStatus('Admin API key is required.', 'error');
+          return;
+        }
+
+        // Confirmation
+        const confirmMsg = `Are you sure you want to delete flag "${key}" in environment "${env}"?`;
+        if (!confirm(confirmMsg)) {
+          setStatus('Delete cancelled.');
+          return;
+        }
+
+        try {
+          setStatus('Deleting flag…');
+          const url = new URL(API_BASE + '/v1/flags');
+          url.searchParams.set('key', key);
+          url.searchParams.set('env', env);
+
+          const res = await fetch(url.toString(), {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer ' + adminKey,
+            },
+          });
+
+          let json;
+          try {
+            json = await res.json();
+          } catch (parseErr) {
+            console.error('Failed to parse response JSON:', parseErr);
+            setStatus('Delete failed: Invalid JSON response from server.', 'error');
+            return;
+          }
+
+          if (!res.ok || json.ok === false) {
+            const msg = json.message || 'HTTP ' + res.status;
+            setStatus('Delete failed: ' + msg, 'error');
+            console.error('delete error', res.status, json);
+            return;
+          }
+
+          const etag = json.etag || '(no etag in response)';
+          setStatus('Flag deleted. Waiting for SSE refresh (etag ' + etag + ').', 'success');
+          clearForm();
+        } catch (err) {
+          console.error('delete error', err);
+          setStatus('Delete failed: ' + err.message, 'error');
+        }
       });
 
       (async function init() {

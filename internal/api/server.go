@@ -40,7 +40,7 @@ func (s *Server) Router() http.Handler {
 	// CORS for browser clients (adjust origins as needed)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:8080"},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "If-None-Match"},
 		ExposedHeaders:   []string{"ETag"},
 		AllowCredentials: false,
@@ -54,7 +54,10 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/healthz", s.handleHealth)
 		r.Get("/v1/flags/snapshot", s.handleSnapshot)
-		r.Post("/v1/flags", s.authAdmin(s.handleUpsertFlag))
+		r.Route("/v1/flags", func(r chi.Router) {
+			r.Post("/", s.authAdmin(s.handleUpsertFlag))
+			r.Delete("/", s.authAdmin(s.handleDeleteFlag))
+		})
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects
@@ -225,6 +228,40 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// respond with new ETag
+	writeJSON(w, http.StatusOK, upsertResponse{
+		OK:   true,
+		ETag: snapshot.Load().ETag,
+	})
+}
+
+func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
+	// Extract query parameters
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	env := strings.TrimSpace(r.URL.Query().Get("env"))
+
+	// Validate required parameters
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "key query parameter is required")
+		return
+	}
+	if env == "" {
+		writeError(w, http.StatusBadRequest, "env query parameter is required")
+		return
+	}
+
+	// Delete from database
+	if err := s.repo.DeleteFlag(r.Context(), key, env); err != nil {
+		writeError(w, http.StatusInternalServerError, "db delete failed")
+		return
+	}
+
+	// Rebuild snapshot
+	if err := s.RebuildSnapshot(r.Context(), env); err != nil {
+		writeError(w, http.StatusInternalServerError, "snapshot rebuild failed")
+		return
+	}
+
+	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
 		OK:   true,
 		ETag: snapshot.Load().ETag,

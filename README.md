@@ -103,6 +103,7 @@ go run ./cmd/server
 | GET    | `/v1/flags/snapshot`  | Fetch all flags + ETag                                                |
 | GET    | `/v1/flags/stream`    | Subscribe via SSE for updates                                         |
 | POST   | `/v1/flags`           | Create/update flag (requires `Authorization: Bearer admin-123`)       |
+| DELETE | `/v1/flags`           | Delete flag by key & env (requires `Authorization: Bearer admin-123`) |
 
 ### Example flag creation
 ```bash
@@ -110,6 +111,12 @@ curl -X POST http://localhost:8080/v1/flags \
   -H "Authorization: Bearer admin-123" \
   -H "Content-Type: application/json" \
   -d '{"key":"banner_message","enabled":true,"env":"prod","config":{"text":"Hello world"}}'
+```
+
+### Example flag deletion
+```bash
+curl -X DELETE "http://localhost:8080/v1/flags?key=banner_message&env=prod" \
+  -H "Authorization: Bearer admin-123"
 ```
 
 ---

@@ -15,3 +15,6 @@ ON CONFLICT (key) DO UPDATE SET
   config      = EXCLUDED.config,
   env         = EXCLUDED.env,
   updated_at  = now();
+
+-- name: DeleteFlag :exec
+DELETE FROM flags WHERE key = $1 AND env = $2;
