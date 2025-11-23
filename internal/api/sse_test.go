@@ -41,7 +41,10 @@ func parseSSEStream(t *testing.T, scanner *bufio.Scanner) <-chan SSEEvent {
 				// End of event (blank line)
 				var data map[string]string
 				if currentData != "" {
-					json.Unmarshal([]byte(currentData), &data)
+					if err := json.Unmarshal([]byte(currentData), &data); err != nil {
+						// Log parse error but continue - this is test helper code
+						t.Logf("Warning: failed to parse SSE data as JSON: %v", err)
+					}
 				}
 				events <- SSEEvent{Event: currentEvent, Data: data}
 				currentEvent = ""

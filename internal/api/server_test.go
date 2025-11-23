@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -283,8 +284,7 @@ func TestUpsertFlag_InvalidRollout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := `{"key": "test", "enabled": true, "rollout": ` + 
-				string(rune(tt.rollout)) + `}`
+			body := fmt.Sprintf(`{"key": "test", "enabled": true, "rollout": %d}`, tt.rollout)
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
 			req.Header.Set("Content-Type", "application/json")
