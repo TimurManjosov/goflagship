@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/auth"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,10 +24,24 @@ type Server struct {
 	store       store.Store
 	env         string
 	adminAPIKey string
+	auth        *auth.Authenticator
 }
 
 func NewServer(s store.Store, env, adminKey string) *Server {
-	return &Server{store: s, env: env, adminAPIKey: adminKey}
+	// Create authenticator with key store
+	var keyStore auth.KeyStore
+	if pgStore, ok := s.(auth.KeyStore); ok {
+		keyStore = pgStore
+	}
+
+	authenticator := auth.NewAuthenticator(keyStore, adminKey)
+
+	return &Server{
+		store:       s,
+		env:         env,
+		adminAPIKey: adminKey,
+		auth:        authenticator,
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -56,6 +71,16 @@ func (s *Server) Router() http.Handler {
 			r.Post("/", s.authAdmin(s.handleUpsertFlag))
 			r.Delete("/", s.authAdmin(s.handleDeleteFlag))
 		})
+
+		// Admin API key management routes (superadmin only)
+		r.Route("/v1/admin/keys", func(r chi.Router) {
+			r.Post("/", s.authAdmin(s.handleCreateAPIKey))
+			r.Get("/", s.authAdmin(s.handleListAPIKeys))
+			r.Delete("/{id}", s.authAdmin(s.handleRevokeAPIKey))
+		})
+
+		// Audit logs route (admin+)
+		r.Get("/v1/admin/audit-logs", s.authAdmin(s.handleListAuditLogs))
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects

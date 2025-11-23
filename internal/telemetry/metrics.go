@@ -33,10 +33,30 @@ var (
 		Name: "snapshot_flags",
 		Help: "Number of flags currently in the in-memory snapshot",
 	})
+
+	// Auth metrics
+	ActiveAPIKeys = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "active_api_keys",
+		Help: "Number of active (enabled and non-expired) API keys",
+	})
+	AuthFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "auth_failures_total",
+			Help: "Total number of authentication failures by reason",
+		},
+		[]string{"reason"},
+	)
+	RateLimitHits = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rate_limit_hits_total",
+			Help: "Total number of rate limit hits by type",
+		},
+		[]string{"type"},
+	)
 )
 
 func Init() {
-	prometheus.MustRegister(httpReqs, httpDur, SSEClients, SnapshotFlags)
+	prometheus.MustRegister(httpReqs, httpDur, SSEClients, SnapshotFlags, ActiveAPIKeys, AuthFailures, RateLimitHits)
 }
 
 func Middleware(next http.Handler) http.Handler {

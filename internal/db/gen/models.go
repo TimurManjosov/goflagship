@@ -5,8 +5,78 @@
 package dbgen
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type ApiKeyRole string
+
+const (
+	ApiKeyRoleReadonly   ApiKeyRole = "readonly"
+	ApiKeyRoleAdmin      ApiKeyRole = "admin"
+	ApiKeyRoleSuperadmin ApiKeyRole = "superadmin"
+)
+
+func (e *ApiKeyRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ApiKeyRole(s)
+	case string:
+		*e = ApiKeyRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ApiKeyRole: %T", src)
+	}
+	return nil
+}
+
+type NullApiKeyRole struct {
+	ApiKeyRole ApiKeyRole `json:"api_key_role"`
+	Valid      bool       `json:"valid"` // Valid is true if ApiKeyRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullApiKeyRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.ApiKeyRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ApiKeyRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullApiKeyRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ApiKeyRole), nil
+}
+
+type ApiKey struct {
+	ID         pgtype.UUID        `json:"id"`
+	Name       string             `json:"name"`
+	KeyHash    string             `json:"key_hash"`
+	Role       ApiKeyRole         `json:"role"`
+	Enabled    bool               `json:"enabled"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	CreatedBy  string             `json:"created_by"`
+}
+
+type AuditLog struct {
+	ID        pgtype.UUID        `json:"id"`
+	Timestamp pgtype.Timestamptz `json:"timestamp"`
+	ApiKeyID  pgtype.UUID        `json:"api_key_id"`
+	Action    string             `json:"action"`
+	Resource  string             `json:"resource"`
+	IpAddress string             `json:"ip_address"`
+	UserAgent string             `json:"user_agent"`
+	Status    int32              `json:"status"`
+	Details   []byte             `json:"details"`
+}
 
 type Flag struct {
 	ID          pgtype.UUID        `json:"id"`
