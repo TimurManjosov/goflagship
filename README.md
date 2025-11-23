@@ -215,6 +215,41 @@ npx http-server -p 3000 -c-1
 
 ---
 
+## 🧪 Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with verbose output
+go test -v ./...
+
+# Run tests with race detector (recommended)
+go test -race ./...
+
+# Run tests with coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out -o coverage.html
+
+# Using Makefile
+make test           # Run all tests
+make test-verbose   # Run with verbose output
+make test-race      # Run with race detector
+make test-cover     # Generate coverage report
+```
+
+### Test Coverage
+
+- **Snapshot Package**: Unit tests for flag snapshots, ETag generation, atomic updates
+- **API Package**: Integration tests for REST endpoints, authentication, validation
+- **SSE Tests**: Server-Sent Events connection, event delivery, multiple clients
+- **Concurrency Tests**: Race condition tests with 50-100 concurrent goroutines
+- **Total**: 56 automated tests covering critical paths
+
+---
+
 ## 📅 Roadmap
 
 - [ ] Node.js SDK support
@@ -223,7 +258,7 @@ npx http-server -p 3000 -c-1
 - [ ] Percentage rollouts
 - [ ] JWT or API-key authentication
 - [ ] Docker Compose setup
-- [ ] Unit + integration tests
+- [x] Unit + integration tests
 - [ ] Publish SDK on npm
 
 ---
