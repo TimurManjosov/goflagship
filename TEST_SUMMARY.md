@@ -6,17 +6,20 @@ This document summarizes the comprehensive test suite added to the goflagship pr
 
 ## Test Statistics
 
-- **Total Tests**: 56 passing tests
-- **Test Files**: 7 new test files
-- **Test Helpers**: 1 utility package
+- **Total Tests**: 93 passing tests (37 new tests added)
+- **Test Files**: 11 test files
+- **Test Helpers**: 1 utility package (now tested)
 
 ### Coverage by Package
 
-| Package | Coverage | Tests |
-|---------|----------|-------|
-| `internal/api` | 85.0% | 34 tests |
-| `internal/snapshot` | 68.2% | 18 tests |
-| `internal/store` | 34.7% | 7 tests (existing) |
+| Package | Coverage | Tests | Change |
+|---------|----------|-------|--------|
+| `internal/config` | 100% | 4 tests | ✅ NEW |
+| `internal/testutil` | 95.0% | 10 tests | ✅ NEW |
+| `internal/snapshot` | 68.2% | 18 tests | — |
+| `internal/api` | 43.2% | 28 tests | — |
+| `internal/auth` | 40.0% | 21 tests | ⬆️ +8 tests |
+| `internal/store` | 36.5% | 12 tests | ⬆️ +5 tests |
 
 ## Test Categories
 
@@ -99,6 +102,53 @@ This document summarizes the comprehensive test suite added to the goflagship pr
 - `TestConcurrent_SameFlag_MultipleUpdates` - 50 updates to same flag
 - `TestConcurrent_DeleteDuringReads` - 10 deletes + 50 reads
 - `TestConcurrent_ETagConsistency` - 100 concurrent ETag reads
+
+### 5. Configuration Tests (4 tests) ✅ NEW
+
+**File**: `internal/config/config_test.go`
+
+- `TestLoad_DefaultValues` - Default configuration loading
+- `TestLoad_EnvironmentOverrides` - Environment variable override
+- `TestLoad_MissingEnvFileIsAcceptable` - Graceful missing .env handling
+- `TestLoad_AllFieldsPopulated` - Required field validation
+
+### 6. Auth Audit Tests (8 tests) ✅ NEW
+
+**File**: `internal/auth/audit_test.go`
+
+- `TestLogAudit` - Audit log entry creation
+- `TestLogAudit_WithError` - Error propagation
+- `TestLogAudit_InvalidJSON` - Invalid JSON handling
+- `TestGetIPAddress_XForwardedFor` - IP from X-Forwarded-For header
+- `TestGetIPAddress_XRealIP` - IP from X-Real-IP header
+- `TestGetIPAddress_RemoteAddr` - IP from RemoteAddr
+- `TestGetIPAddress_Priority` - Header priority order
+- `TestGetIPAddress_XRealIPPriorityOverRemoteAddr` - Priority verification
+
+### 7. Store Factory Tests (5 tests) ✅ NEW
+
+**File**: `internal/store/factory_test.go`
+
+- `TestNewStore_Memory` - Memory store creation
+- `TestNewStore_UnsupportedType` - Invalid type handling
+- `TestNewStore_PostgresWithInvalidDSN` - DSN validation
+- `TestNewStore_EmptyDSNForMemory` - Empty DSN handling
+- `TestNewStore_CaseSensitivity` - Store type case sensitivity
+
+### 8. TestUtil Tests (10 tests) ✅ NEW
+
+**File**: `internal/testutil/helpers_test.go`
+
+- `TestNewTestServer` - Test server creation
+- `TestHTTPRequest_Do` - HTTP request helper
+- `TestHTTPRequest_DoWithBody` - Request with body
+- `TestHTTPRequest_DoWithHeaders` - Custom headers
+- `TestHTTPRequest_ContentTypeAutoSet` - Auto Content-Type setting
+- `TestSeedFlags` - Flag seeding utility
+- `TestSeedFlags_EmptyList` - Empty list handling
+- `TestSeedFlags_DifferentEnvironments` - Multi-env seeding
+- `TestHTTPRequest_EmptyBody` - Empty body handling
+- `TestHTTPRequest_HeaderOverride` - Header override
 
 ## Test Infrastructure
 
@@ -274,4 +324,5 @@ When adding new features:
 
 **Last Updated**: 2025-11-23  
 **Test Framework**: Go standard library `testing` package  
-**CI Provider**: GitHub Actions
+**CI Provider**: GitHub Actions  
+**Comprehensive Audit Report**: See `COMPREHENSIVE_AUDIT_REPORT.md` for full analysis
