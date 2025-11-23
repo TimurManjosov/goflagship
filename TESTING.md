@@ -192,7 +192,7 @@ go test -race ./internal/snapshot/...
 
 Tests run automatically on every push and pull request via GitHub Actions:
 
-- Tests run on Go 1.23, 1.24, and 1.25
+- Tests run on Go 1.25.3 and 1.25.4
 - Race detection runs on snapshot and store packages
 - Coverage reports are generated and uploaded as artifacts
 - Linting runs via golangci-lint
