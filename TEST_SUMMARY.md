@@ -200,7 +200,7 @@ go test -race ./internal/api/...  # Due to SSE streaming tests
 
 `.github/workflows/tests.yml` runs on every push and PR:
 
-1. **Test Job** (Matrix: Go 1.21, 1.22, 1.23)
+1. **Test Job** (Matrix: Go 1.23, 1.24, 1.25)
    - Run all tests
    - Run race detection (selected packages)
    - Generate coverage report
