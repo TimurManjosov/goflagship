@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
@@ -57,10 +56,8 @@ func TestNewStore_PostgresWithInvalidDSN(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for invalid DSN")
 	}
-	// Error should mention postgres pool creation
-	if !errors.Is(err, err) { // Basic error check
-		t.Logf("Got expected error: %v", err)
-	}
+	// Just verify we got an error (the specific error depends on the DSN parser)
+	t.Logf("Got expected error: %v", err)
 }
 
 func TestNewStore_EmptyDSNForMemory(t *testing.T) {
