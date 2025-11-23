@@ -108,6 +108,80 @@ func (p *PostgresStore) Close() error {
 	return nil
 }
 
+// --- API Keys ---
+
+// ListAPIKeys retrieves all API keys from the database
+func (p *PostgresStore) ListAPIKeys(ctx context.Context) ([]dbgen.ApiKey, error) {
+	return p.q.ListAPIKeys(ctx)
+}
+
+// CreateAPIKey creates a new API key in the database
+func (p *PostgresStore) CreateAPIKey(ctx context.Context, params dbgen.CreateAPIKeyParams) (dbgen.ApiKey, error) {
+	return p.q.CreateAPIKey(ctx, params)
+}
+
+// GetAPIKeyByID retrieves an API key by its ID
+func (p *PostgresStore) GetAPIKeyByID(ctx context.Context, id pgtype.UUID) (dbgen.ApiKey, error) {
+	return p.q.GetAPIKeyByID(ctx, id)
+}
+
+// UpdateAPIKeyLastUsed updates the last_used_at timestamp for an API key
+func (p *PostgresStore) UpdateAPIKeyLastUsed(ctx context.Context, id pgtype.UUID) error {
+	return p.q.UpdateAPIKeyLastUsed(ctx, id)
+}
+
+// RevokeAPIKey disables an API key
+func (p *PostgresStore) RevokeAPIKey(ctx context.Context, id pgtype.UUID) error {
+	return p.q.RevokeAPIKey(ctx, id)
+}
+
+// DeleteAPIKey permanently deletes an API key
+func (p *PostgresStore) DeleteAPIKey(ctx context.Context, id pgtype.UUID) error {
+	return p.q.DeleteAPIKey(ctx, id)
+}
+
+// --- Audit Logs ---
+
+// CreateAuditLog creates a new audit log entry
+func (p *PostgresStore) CreateAuditLog(ctx context.Context, apiKeyID pgtype.UUID, action, resource, ipAddress, userAgent string, status int32, details map[string]interface{}) error {
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		detailsJSON = []byte("{}")
+	}
+
+	return p.q.CreateAuditLog(ctx, dbgen.CreateAuditLogParams{
+		ApiKeyID:  apiKeyID,
+		Action:    action,
+		Resource:  resource,
+		IpAddress: ipAddress,
+		UserAgent: userAgent,
+		Status:    status,
+		Details:   detailsJSON,
+	})
+}
+
+// ListAuditLogs retrieves audit logs with pagination
+func (p *PostgresStore) ListAuditLogs(ctx context.Context, limit, offset int32) ([]dbgen.AuditLog, error) {
+	return p.q.ListAuditLogs(ctx, dbgen.ListAuditLogsParams{
+		Limit:  limit,
+		Offset: offset,
+	})
+}
+
+// CountAuditLogs returns the total count of audit logs
+func (p *PostgresStore) CountAuditLogs(ctx context.Context) (int64, error) {
+	return p.q.CountAuditLogs(ctx)
+}
+
+// GetAuditLogsByAPIKey retrieves audit logs for a specific API key
+func (p *PostgresStore) GetAuditLogsByAPIKey(ctx context.Context, apiKeyID pgtype.UUID, limit, offset int32) ([]dbgen.AuditLog, error) {
+	return p.q.GetAuditLogsByAPIKey(ctx, dbgen.GetAuditLogsByAPIKeyParams{
+		ApiKeyID: apiKeyID,
+		Limit:    limit,
+		Offset:   offset,
+	})
+}
+
 // convertFromDB converts a database Flag to a store Flag.
 func (p *PostgresStore) convertFromDB(dbFlag dbgen.Flag) (Flag, error) {
 	var config map[string]any

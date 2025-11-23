@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/auth"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,10 +24,45 @@ type Server struct {
 	store       store.Store
 	env         string
 	adminAPIKey string
+	auth        *auth.Authenticator
+	auditChan   chan auth.AuditEntry
 }
 
 func NewServer(s store.Store, env, adminKey string) *Server {
-	return &Server{store: s, env: env, adminAPIKey: adminKey}
+	// Create authenticator with key store
+	var keyStore auth.KeyStore
+	if pgStore, ok := s.(auth.KeyStore); ok {
+		keyStore = pgStore
+	}
+
+	authenticator := auth.NewAuthenticator(keyStore, adminKey)
+
+	srv := &Server{
+		store:       s,
+		env:         env,
+		adminAPIKey: adminKey,
+		auth:        authenticator,
+		auditChan:   make(chan auth.AuditEntry, 100), // Buffered channel for audit logs
+	}
+
+	// Start background worker for audit logging
+	go srv.auditWorker()
+
+	return srv
+}
+
+// auditWorker processes audit log entries in the background
+func (s *Server) auditWorker() {
+	for entry := range s.auditChan {
+		// Use background context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		
+		if pgStore, ok := s.store.(PostgresStoreInterface); ok {
+			_ = auth.LogAudit(ctx, pgStore, entry)
+		}
+		
+		cancel()
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -56,6 +92,16 @@ func (s *Server) Router() http.Handler {
 			r.Post("/", s.authAdmin(s.handleUpsertFlag))
 			r.Delete("/", s.authAdmin(s.handleDeleteFlag))
 		})
+
+		// Admin API key management routes (superadmin only)
+		r.Route("/v1/admin/keys", func(r chi.Router) {
+			r.Post("/", s.authAdmin(s.handleCreateAPIKey))
+			r.Get("/", s.authAdmin(s.handleListAPIKeys))
+			r.Delete("/{id}", s.authAdmin(s.handleRevokeAPIKey))
+		})
+
+		// Audit logs route (admin+)
+		r.Get("/v1/admin/audit-logs", s.authAdmin(s.handleListAuditLogs))
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects
@@ -212,6 +258,9 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Log the action
+	s.auditLog(r, "upsert_flag", fmt.Sprintf("flags/%s/%s", env, req.Key), http.StatusOK)
+
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
 		OK:   true,
@@ -245,6 +294,9 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "snapshot rebuild failed")
 		return
 	}
+
+	// Log the action
+	s.auditLog(r, "delete_flag", fmt.Sprintf("flags/%s/%s", env, key), http.StatusOK)
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
