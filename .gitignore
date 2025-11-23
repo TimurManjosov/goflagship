@@ -3,6 +3,10 @@ bin/
 *.exe
 *.test
 
+# Test coverage
+coverage.out
+coverage.html
+
 # Node / SDK
 node_modules/
 sdk/dist-temp/
