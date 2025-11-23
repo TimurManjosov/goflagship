@@ -47,9 +47,16 @@ type keyInfo struct {
 
 // handleCreateAPIKey creates a new API key (superadmin only)
 func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to prevent memory exhaustion attacks
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
+
 	var req createKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		if err.Error() == "http: request body too large" {
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid JSON: expected fields 'name', 'role', and optional 'expires_at'")
 		return
 	}
 
@@ -362,28 +369,23 @@ func parseUUID(s string) (pgtype.UUID, error) {
 	return uuid, nil
 }
 
-// auditLog logs an action to the audit log
+// auditLog logs an action to the audit log (non-blocking)
 func (s *Server) auditLog(r *http.Request, action, resource string, status int) {
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		return // Silently skip if not postgres
+	apiKeyID, _ := auth.GetAPIKeyIDFromContext(r.Context())
+	entry := auth.AuditEntry{
+		APIKeyID:  apiKeyID,
+		Action:    action,
+		Resource:  resource,
+		IPAddress: auth.GetIPAddress(r),
+		UserAgent: r.UserAgent(),
+		Status:    status,
 	}
 
-	apiKeyID, _ := auth.GetAPIKeyIDFromContext(r.Context())
-	ipAddress := auth.GetIPAddress(r)
-	userAgent := r.UserAgent()
-
-	// Log asynchronously to avoid blocking the request
-	go func() {
-		_ = pgStore.CreateAuditLog(
-			context.Background(),
-			apiKeyID,
-			action,
-			resource,
-			ipAddress,
-			userAgent,
-			int32(status),
-			nil,
-		)
-	}()
+	// Queue audit log entry (non-blocking)
+	select {
+	case s.auditChan <- entry:
+		// Successfully queued
+	default:
+		// Channel full, skip this audit log (acceptable under high load)
+	}
 }

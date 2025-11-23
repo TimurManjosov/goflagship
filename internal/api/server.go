@@ -25,6 +25,7 @@ type Server struct {
 	env         string
 	adminAPIKey string
 	auth        *auth.Authenticator
+	auditChan   chan auth.AuditEntry
 }
 
 func NewServer(s store.Store, env, adminKey string) *Server {
@@ -36,11 +37,31 @@ func NewServer(s store.Store, env, adminKey string) *Server {
 
 	authenticator := auth.NewAuthenticator(keyStore, adminKey)
 
-	return &Server{
+	srv := &Server{
 		store:       s,
 		env:         env,
 		adminAPIKey: adminKey,
 		auth:        authenticator,
+		auditChan:   make(chan auth.AuditEntry, 100), // Buffered channel for audit logs
+	}
+
+	// Start background worker for audit logging
+	go srv.auditWorker()
+
+	return srv
+}
+
+// auditWorker processes audit log entries in the background
+func (s *Server) auditWorker() {
+	for entry := range s.auditChan {
+		// Use background context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		
+		if pgStore, ok := s.store.(PostgresStoreInterface); ok {
+			_ = auth.LogAudit(ctx, pgStore, entry)
+		}
+		
+		cancel()
 	}
 }
 

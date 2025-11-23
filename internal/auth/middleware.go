@@ -25,17 +25,39 @@ type KeyStore interface {
 	UpdateAPIKeyLastUsed(ctx context.Context, id pgtype.UUID) error
 }
 
+// lastUsedUpdate represents a request to update the last_used_at timestamp
+type lastUsedUpdate struct {
+	id pgtype.UUID
+}
+
 // Authenticator handles authentication for API requests
 type Authenticator struct {
 	keyStore       KeyStore
 	legacyAdminKey string // For backward compatibility
+	updateChan     chan lastUsedUpdate
 }
 
-// NewAuthenticator creates a new Authenticator
+// NewAuthenticator creates a new Authenticator with a background worker
 func NewAuthenticator(keyStore KeyStore, legacyAdminKey string) *Authenticator {
-	return &Authenticator{
+	auth := &Authenticator{
 		keyStore:       keyStore,
 		legacyAdminKey: legacyAdminKey,
+		updateChan:     make(chan lastUsedUpdate, 100), // Buffered channel to prevent blocking
+	}
+
+	// Start background worker for updating last_used_at timestamps
+	go auth.lastUsedWorker()
+
+	return auth
+}
+
+// lastUsedWorker processes last_used_at updates in the background
+func (a *Authenticator) lastUsedWorker() {
+	for update := range a.updateChan {
+		// Use a background context with timeout to prevent hanging
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = a.keyStore.UpdateAPIKeyLastUsed(ctx, update.id)
+		cancel()
 	}
 }
 
@@ -68,9 +90,12 @@ func (a *Authenticator) Authenticate(ctx context.Context, authHeader string) Aut
 	}
 
 	// Try database-stored keys
-	// We need to query all enabled keys and verify each hash
-	// This is the only way with bcrypt since hashes are non-deterministic
-	// For better performance, consider implementing a cache layer
+	// Note: This queries all enabled keys and verifies each hash with bcrypt
+	// This is necessary because bcrypt hashes are non-deterministic (include random salt)
+	// For production deployments with many keys, consider implementing a cache layer:
+	// - Cache keys for 5-10 minutes with periodic refresh
+	// - Invalidate cache on key creation/revocation
+	// - Use a mutex or RWMutex for thread-safe cache access
 	keys, err := a.keyStore.ListAPIKeys(ctx)
 	if err != nil {
 		return AuthResult{
@@ -105,10 +130,15 @@ func (a *Authenticator) Authenticate(ctx context.Context, authHeader string) Aut
 		}
 	}
 
-	// Update last used timestamp (async, ignore errors)
-	go func() {
-		_ = a.keyStore.UpdateAPIKeyLastUsed(context.Background(), apiKey.ID)
-	}()
+	// Update last used timestamp (non-blocking, handled by background worker)
+	if apiKey.ID.Valid {
+		select {
+		case a.updateChan <- lastUsedUpdate{id: apiKey.ID}:
+			// Successfully queued
+		default:
+			// Channel full, skip this update (acceptable trade-off)
+		}
+	}
 
 	return AuthResult{
 		Authenticated: true,
