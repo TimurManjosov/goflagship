@@ -76,11 +76,15 @@ jobs:
       with:
         go-version: '1.25.3'
 
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
+    - name: Install and run golangci-lint
+      run: |
+        # compile golangci-lint with the workflow Go version so its runtime Go version meets module target
+        export GOBIN=$(go env GOPATH)/bin
+        mkdir -p "$GOBIN"
+        # build the linter binary using the same Go toolchain provided by setup-go
+        GOTOOLCHAIN=go1.25.3 GOBIN="$GOBIN" go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        # run the linter from the locally installed binary
+        "$GOBIN"/golangci-lint run --timeout=5m
 
   build:
     name: Build
