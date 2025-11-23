@@ -35,6 +35,10 @@ It's like a self-hosted, open-source alternative to **LaunchDarkly**, **GrowthBo
 ✅ Postgres persistence via Goose migrations  
 ✅ Prometheus metrics (`/metrics`) + pprof profiling  
 ✅ Simple demo web client included  
+✅ **NEW:** Database-backed API keys with bcrypt hashing  
+✅ **NEW:** Role-based access control (readonly, admin, superadmin)  
+✅ **NEW:** Audit logging for all admin operations  
+✅ **NEW:** API key expiry and revocation support  
 
 > Designed to be minimal, composable, and hackable — perfect for learning, startups, or internal infrastructure.
 
@@ -97,13 +101,26 @@ go run ./cmd/server
 
 ## 🧠 API Endpoints
 
+### Flag Management
+
 | Method | Endpoint              | Description                                                           |
 |--------|-----------------------|-----------------------------------------------------------------------|
 | GET    | `/healthz`            | Health check                                                          |
 | GET    | `/v1/flags/snapshot`  | Fetch all flags + ETag                                                |
 | GET    | `/v1/flags/stream`    | Subscribe via SSE for updates                                         |
-| POST   | `/v1/flags`           | Create/update flag (requires `Authorization: Bearer admin-123`)       |
-| DELETE | `/v1/flags`           | Delete flag by key & env (requires `Authorization: Bearer admin-123`) |
+| POST   | `/v1/flags`           | Create/update flag (requires admin role)                              |
+| DELETE | `/v1/flags`           | Delete flag by key & env (requires admin role)                        |
+
+### Authentication & Security (NEW)
+
+| Method | Endpoint                  | Description                                  |
+|--------|---------------------------|----------------------------------------------|
+| POST   | `/v1/admin/keys`          | Create API key (requires superadmin role)    |
+| GET    | `/v1/admin/keys`          | List all API keys (requires admin role)      |
+| DELETE | `/v1/admin/keys/:id`      | Revoke API key (requires superadmin role)    |
+| GET    | `/v1/admin/audit-logs`    | View audit logs (requires admin role)        |
+
+📚 **See [AUTH_SETUP.md](AUTH_SETUP.md) for detailed authentication setup and usage guide.**
 
 ### Example flag creation
 ```bash

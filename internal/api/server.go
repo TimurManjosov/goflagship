@@ -237,6 +237,9 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Log the action
+	s.auditLog(r, "upsert_flag", fmt.Sprintf("flags/%s/%s", env, req.Key), http.StatusOK)
+
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
 		OK:   true,
@@ -270,6 +273,9 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "snapshot rebuild failed")
 		return
 	}
+
+	// Log the action
+	s.auditLog(r, "delete_flag", fmt.Sprintf("flags/%s/%s", env, key), http.StatusOK)
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
