@@ -201,19 +201,54 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 // ---- handlers ----
 
+// variantRequest represents a variant in the API request
+type variantRequest struct {
+	Name   string         `json:"name"`
+	Weight int            `json:"weight"`
+	Config map[string]any `json:"config,omitempty"`
+}
+
 type upsertRequest struct {
-	Key         string         `json:"key"`
-	Description string         `json:"description"`
-	Enabled     bool           `json:"enabled"`
-	Rollout     int32          `json:"rollout"`
-	Expression  *string        `json:"expression,omitempty"`
-	Config      map[string]any `json:"config,omitempty"`
-	Env         *string        `json:"env,omitempty"` // defaults to s.env
+	Key         string           `json:"key"`
+	Description string           `json:"description"`
+	Enabled     bool             `json:"enabled"`
+	Rollout     int32            `json:"rollout"`
+	Expression  *string          `json:"expression,omitempty"`
+	Config      map[string]any   `json:"config,omitempty"`
+	Variants    []variantRequest `json:"variants,omitempty"` // For A/B testing
+	Env         *string          `json:"env,omitempty"`      // defaults to s.env
 }
 
 type upsertResponse struct {
 	OK   bool   `json:"ok"`
 	ETag string `json:"etag"`
+}
+
+// validateVariants checks that variant weights sum to 100 and names are valid
+func validateVariants(variants []variantRequest) error {
+	if len(variants) == 0 {
+		return nil
+	}
+
+	totalWeight := 0
+	seenNames := make(map[string]bool)
+	for _, v := range variants {
+		if v.Name == "" {
+			return fmt.Errorf("variant name cannot be empty")
+		}
+		if seenNames[v.Name] {
+			return fmt.Errorf("duplicate variant name: %s", v.Name)
+		}
+		seenNames[v.Name] = true
+		if v.Weight < 0 || v.Weight > 100 {
+			return fmt.Errorf("variant weight must be between 0 and 100")
+		}
+		totalWeight += v.Weight
+	}
+	if totalWeight != 100 {
+		return fmt.Errorf("variant weights must sum to 100, got %d", totalWeight)
+	}
+	return nil
 }
 
 func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
@@ -239,6 +274,25 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate variants if provided
+	if err := validateVariants(req.Variants); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Convert variants to store type
+	var variants []store.Variant
+	if len(req.Variants) > 0 {
+		variants = make([]store.Variant, len(req.Variants))
+		for i, v := range req.Variants {
+			variants[i] = store.Variant{
+				Name:   v.Name,
+				Weight: v.Weight,
+				Config: v.Config,
+			}
+		}
+	}
+
 	// upsert via store
 	params := store.UpsertParams{
 		Key:         req.Key,
@@ -247,6 +301,7 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		Rollout:     req.Rollout,
 		Expression:  req.Expression,
 		Config:      req.Config,
+		Variants:    variants,
 		Env:         env,
 	}
 	if err := s.store.UpsertFlag(r.Context(), params); err != nil {
