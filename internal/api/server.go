@@ -56,11 +56,11 @@ func (s *Server) auditWorker() {
 	for entry := range s.auditChan {
 		// Use background context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		
+
 		if pgStore, ok := s.store.(PostgresStoreInterface); ok {
 			_ = auth.LogAudit(ctx, pgStore, entry)
 		}
-		
+
 		cancel()
 	}
 }
@@ -89,19 +89,21 @@ func (s *Server) Router() http.Handler {
 		r.Get("/healthz", s.handleHealth)
 		r.Get("/v1/flags/snapshot", s.handleSnapshot)
 		r.Route("/v1/flags", func(r chi.Router) {
-			r.Post("/", s.authAdmin(s.handleUpsertFlag))
-			r.Delete("/", s.authAdmin(s.handleDeleteFlag))
+			r.Use(s.auth.RequireAuth(auth.RoleAdmin))
+			r.Post("/", s.handleUpsertFlag)
+			r.Delete("/", s.handleDeleteFlag)
 		})
 
 		// Admin API key management routes (superadmin only)
 		r.Route("/v1/admin/keys", func(r chi.Router) {
-			r.Post("/", s.authAdmin(s.handleCreateAPIKey))
-			r.Get("/", s.authAdmin(s.handleListAPIKeys))
-			r.Delete("/{id}", s.authAdmin(s.handleRevokeAPIKey))
+			r.Use(s.auth.RequireAuth(auth.RoleSuperadmin))
+			r.Post("/", s.handleCreateAPIKey)
+			r.Get("/", s.handleListAPIKeys)
+			r.Delete("/{id}", s.handleRevokeAPIKey)
 		})
 
 		// Audit logs route (admin+)
-		r.Get("/v1/admin/audit-logs", s.authAdmin(s.handleListAuditLogs))
+		r.With(s.auth.RequireAuth(auth.RoleAdmin)).Get("/v1/admin/audit-logs", s.handleListAuditLogs)
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects
