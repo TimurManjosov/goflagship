@@ -147,7 +147,8 @@ export class FlagshipClient {
         const salt = this.cache?.rolloutSalt ?? '';
         const key = `${userId}:${flagKey}:${salt}`;
         const hash = murmur.murmur3(key);
-        return hash % 100;
+        // Use Math.abs to handle potential negative values from modulo
+        return Math.abs(hash % 100);
     }
     async refresh() {
         await this.fetchSnapshot();
