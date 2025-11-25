@@ -62,6 +62,7 @@ func (m *MemoryStore) UpsertFlag(ctx context.Context, params UpsertParams) error
 		Rollout:     params.Rollout,
 		Expression:  params.Expression,
 		Config:      params.Config,
+		Variants:    params.Variants,
 		Env:         params.Env,
 		UpdatedAt:   time.Now().UTC(),
 	}

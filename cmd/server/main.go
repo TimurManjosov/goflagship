@@ -29,6 +29,9 @@ func main() {
 	// Prometheus registry
 	telemetry.Init()
 
+	// Set rollout salt for deterministic bucketing
+	snapshot.SetRolloutSalt(cfg.RolloutSalt)
+
 	ctx := context.Background()
 
 	// Create store based on configuration

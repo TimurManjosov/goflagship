@@ -39,6 +39,9 @@ It's like a self-hosted, open-source alternative to **LaunchDarkly**, **GrowthBo
 ✅ **NEW:** Role-based access control (readonly, admin, superadmin)  
 ✅ **NEW:** Audit logging for all admin operations  
 ✅ **NEW:** API key expiry and revocation support  
+✅ **NEW:** Percentage rollouts with deterministic user bucketing  
+✅ **NEW:** Multi-variant A/B testing support  
+✅ **NEW:** Client-side rollout evaluation in SDK  
 
 > Designed to be minimal, composable, and hackable — perfect for learning, startups, or internal infrastructure.
 
@@ -170,14 +173,126 @@ npm install
 
 ### API (SDK)
 
-| Method          | Description                                 |
-|-----------------|---------------------------------------------|
-| `init()`        | Fetch snapshot + connect SSE                |
-| `on(event, fn)` | Listen to 'ready', 'update', 'error'        |
-| `isEnabled(key)`| Returns boolean                             |
-| `getConfig(key)`| Returns config object                       |
-| `keys()`        | Returns all flag keys                       |
-| `close()`       | Stops the stream                            |
+| Method              | Description                                           |
+|---------------------|-------------------------------------------------------|
+| `init()`            | Fetch snapshot + connect SSE                          |
+| `on(event, fn)`     | Listen to 'ready', 'update', 'error'                  |
+| `isEnabled(key)`    | Returns boolean (considers rollout percentage)        |
+| `getConfig(key)`    | Returns config object                                 |
+| `getVariant(key)`   | Returns assigned variant name for A/B tests           |
+| `getVariantConfig(key)` | Returns config for the assigned variant           |
+| `setUser(user)`     | Set user context for rollout evaluation               |
+| `getUser()`         | Get current user context                              |
+| `keys()`            | Returns all flag keys                                 |
+| `close()`           | Stops the stream                                      |
+
+---
+
+## 🎯 Percentage Rollouts & A/B Testing
+
+go-flagship supports **gradual rollouts** and **A/B testing** with deterministic user bucketing.
+
+### Configuration
+
+Set a stable rollout salt in your environment (important for production!):
+
+```bash
+# In .env or environment variables
+ROLLOUT_SALT=your-stable-production-salt-v1
+```
+
+⚠️ **Warning:** Changing the salt will redistribute all users to different buckets!
+
+### Basic Percentage Rollout
+
+Create a flag with a rollout percentage:
+
+```bash
+curl -X POST http://localhost:8080/v1/flags \
+  -H "Authorization: Bearer admin-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "new_checkout_flow",
+    "enabled": true,
+    "rollout": 25,
+    "env": "prod",
+    "config": {"version": "v2"}
+  }'
+```
+
+This enables the flag for approximately 25% of users.
+
+### Multi-Variant A/B Testing
+
+Create a flag with multiple variants:
+
+```bash
+curl -X POST http://localhost:8080/v1/flags \
+  -H "Authorization: Bearer admin-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "checkout_experiment",
+    "enabled": true,
+    "rollout": 100,
+    "variants": [
+      {"name": "control", "weight": 50, "config": {"layout": "standard"}},
+      {"name": "express", "weight": 30, "config": {"layout": "single-page"}},
+      {"name": "premium", "weight": 20, "config": {"layout": "vip"}}
+    ],
+    "env": "prod"
+  }'
+```
+
+### SDK Usage with Rollouts
+
+```typescript
+import { FlagshipClient } from './dist/flagshipClient.js';
+
+// Create client with user context
+const client = new FlagshipClient({
+  baseUrl: 'http://localhost:8080',
+  user: { id: 'user-123' }  // Required for rollouts
+});
+
+await client.init();
+
+// Check if user is in rollout
+if (client.isEnabled('new_checkout_flow')) {
+  // User is in the 25% rollout
+  showNewCheckout();
+}
+
+// Get assigned variant for A/B test
+const variant = client.getVariant('checkout_experiment');
+if (variant === 'express') {
+  showExpressCheckout();
+} else if (variant === 'premium') {
+  showPremiumCheckout();
+} else {
+  showStandardCheckout();
+}
+
+// Get variant-specific config
+const config = client.getVariantConfig('checkout_experiment');
+console.log(config?.layout); // 'standard', 'single-page', or 'vip'
+
+// Update user context (e.g., after login)
+client.setUser({ id: 'logged-in-user-456' });
+```
+
+### How It Works
+
+1. **Deterministic Hashing**: Uses xxHash (server) / MurmurHash (client) to hash `userID + flagKey + salt`
+2. **Bucket Assignment**: Hash is mapped to a bucket (0-99)
+3. **Rollout Check**: If bucket < rollout percentage, user sees the feature
+4. **Variant Assignment**: For A/B tests, bucket determines which variant based on cumulative weights
+
+### Key Properties
+
+- **Deterministic**: Same user always gets the same result for a flag
+- **Even Distribution**: Users are evenly distributed across buckets
+- **Consistent**: Same assignment across client and server (when using same salt)
+- **Safe**: Changing rollout from 10% to 20% only adds users, never removes
 
 ---
 
@@ -263,7 +378,9 @@ make test-cover     # Generate coverage report
 - **API Package**: Integration tests for REST endpoints, authentication, validation
 - **SSE Tests**: Server-Sent Events connection, event delivery, multiple clients
 - **Concurrency Tests**: Race condition tests with 50-100 concurrent goroutines
-- **Total**: 56 automated tests covering critical paths
+- **Rollout Package**: Unit tests for hashing, bucket distribution, variant selection
+- **SDK Rollout Tests**: Client-side rollout evaluation tests
+- **Total**: 70+ automated tests covering critical paths
 
 ---
 
@@ -272,8 +389,9 @@ make test-cover     # Generate coverage report
 - [ ] Node.js SDK support
 - [ ] React admin dashboard
 - [ ] Flag targeting (country, plan, userId)
-- [ ] Percentage rollouts
-- [ ] JWT or API-key authentication
+- [x] Percentage rollouts
+- [x] Multi-variant A/B testing
+- [x] JWT or API-key authentication
 - [ ] Docker Compose setup
 - [x] Unit + integration tests
 - [ ] Publish SDK on npm

@@ -29,6 +29,13 @@ type Store interface {
 	Close() error
 }
 
+// Variant represents a variant in an A/B test or multi-variant experiment.
+type Variant struct {
+	Name   string         `json:"name"`
+	Weight int            `json:"weight"`           // Percentage weight (0-100)
+	Config map[string]any `json:"config,omitempty"` // Optional config for this variant
+}
+
 // Flag represents a feature flag with all its attributes.
 type Flag struct {
 	Key         string         `json:"key"`
@@ -37,6 +44,7 @@ type Flag struct {
 	Rollout     int32          `json:"rollout"`
 	Expression  *string        `json:"expression,omitempty"`
 	Config      map[string]any `json:"config,omitempty"`
+	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
 	Env         string         `json:"env"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
 }
@@ -49,5 +57,6 @@ type UpsertParams struct {
 	Rollout     int32          `json:"rollout"`
 	Expression  *string        `json:"expression,omitempty"`
 	Config      map[string]any `json:"config,omitempty"`
+	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
 	Env         string         `json:"env"`
 }

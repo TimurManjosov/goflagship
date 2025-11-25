@@ -1,4 +1,13 @@
 // sdk/flagshipClient.ts
+import murmur from 'murmurhash-js';
+
+/** Variant definition for A/B testing */
+type Variant = {
+  name: string;
+  weight: number;
+  config?: Record<string, unknown>;
+};
+
 type FlagView = {
   key: string;
   description?: string;
@@ -6,6 +15,7 @@ type FlagView = {
   rollout: number;
   expression?: string | null;
   config?: Record<string, unknown>;
+  variants?: Variant[];
   env: string;
   updatedAt: string;
 };
@@ -14,6 +24,7 @@ type Snapshot = {
   etag: string;
   flags: Record<string, FlagView>;
   updatedAt: string;
+  rolloutSalt?: string; // Salt for deterministic rollout evaluation
 };
 
 type Events = {
@@ -26,8 +37,15 @@ type ListenerMap = Partial<Record<keyof Events, Function[]>>;
 
 type Listener<T extends keyof Events> = Events[T];
 
+/** User context for rollout evaluation */
+export type UserContext = {
+  id: string; // Required for rollouts
+  attributes?: Record<string, unknown>; // Optional, for future targeting
+};
+
 export type ClientOptions = {
   baseUrl?: string; // default http://localhost:8080
+  user?: UserContext; // User context for rollout evaluation
   reconnect?: boolean; // SSE reconnect on error (default true)
   reconnectMinMs?: number; // backoff start (default 500ms)
   reconnectMaxMs?: number; // backoff cap (default 10_000ms)
@@ -47,11 +65,13 @@ export class FlagshipClient {
   private rMin = 500;
   private rMax = 10_000;
   private stopping = false;
+  private user: UserContext | undefined;
 
   constructor(opts: ClientOptions = {}) {
     this.base = opts.baseUrl ?? this.base;
+    this.user = opts.user;
 
-    // ✅ bind fetch to the global object to avoid “Illegal invocation”
+    // ✅ bind fetch to the global object to avoid "Illegal invocation"
     const f = opts.fetchImpl ?? (globalThis as any).fetch;
     if (!f) throw new Error('fetch is not available in this environment');
     this.fetch = f.bind(globalThis);
@@ -75,12 +95,96 @@ export class FlagshipClient {
     return !!this.cache;
   }
 
-  isEnabled(key: string): boolean {
-    return !!this.cache?.flags?.[key]?.enabled;
+  /**
+   * Set or update the user context for rollout evaluation.
+   * Call this when the user logs in or their identity changes.
+   */
+  setUser(user: UserContext): void {
+    this.user = user;
   }
 
+  /**
+   * Get the current user context.
+   */
+  getUser(): UserContext | undefined {
+    return this.user;
+  }
+
+  /**
+   * Check if a flag is enabled for the current user.
+   * Takes into account the flag's enabled state and rollout percentage.
+   * 
+   * @param key - The flag key
+   * @returns true if the flag is enabled and the user is within the rollout percentage
+   */
+  isEnabled(key: string): boolean {
+    const flag = this.cache?.flags?.[key];
+    if (!flag) return false;
+    if (!flag.enabled) return false;
+
+    // If rollout is 100, always enabled
+    if (flag.rollout >= 100) return true;
+    // If rollout is 0, always disabled
+    if (flag.rollout <= 0) return false;
+
+    // Need user context for partial rollout
+    if (!this.user?.id) return false;
+
+    // Calculate bucket and check rollout
+    const bucket = this.bucketUser(this.user.id, key);
+    return bucket < flag.rollout;
+  }
+
+  /**
+   * Get the config for a flag.
+   */
   getConfig<T = unknown>(key: string): T | undefined {
     return this.cache?.flags?.[key]?.config as T | undefined;
+  }
+
+  /**
+   * Get the variant name assigned to the current user for a flag.
+   * Returns undefined if no variants are defined or user context is missing.
+   * 
+   * @param key - The flag key
+   * @returns The variant name or undefined
+   */
+  getVariant(key: string): string | undefined {
+    const flag = this.cache?.flags?.[key];
+    if (!flag || !flag.variants || flag.variants.length === 0) return undefined;
+    if (!this.user?.id) return undefined;
+
+    const bucket = this.bucketUser(this.user.id, key);
+    
+    // Find variant based on cumulative weights
+    let cumulative = 0;
+    for (const variant of flag.variants) {
+      cumulative += variant.weight;
+      if (bucket < cumulative) {
+        return variant.name;
+      }
+    }
+    
+    // Fallback to last variant (should not happen if weights sum to 100)
+    return flag.variants[flag.variants.length - 1]?.name;
+  }
+
+  /**
+   * Get the config for the variant assigned to the current user.
+   * Returns undefined if no variants or user context is missing.
+   * 
+   * @param key - The flag key
+   * @returns The variant config or undefined
+   */
+  getVariantConfig<T = unknown>(key: string): T | undefined {
+    const variantName = this.getVariant(key);
+    if (!variantName) return undefined;
+
+    const flag = this.cache?.flags?.[key];
+    if (!flag?.variants) return undefined;
+
+    const variant = flag.variants.find((v) => v.name === variantName);
+    return variant?.config as T | undefined;
   }
 
   keys(): string[] {
@@ -106,6 +210,17 @@ export class FlagshipClient {
   }
 
   // ---- internals ----
+
+  /**
+   * Calculate the bucket (0-99) for a user and flag using MurmurHash3.
+   * This is deterministic: same user + flag + salt = same bucket.
+   */
+  private bucketUser(userId: string, flagKey: string): number {
+    const salt = this.cache?.rolloutSalt ?? '';
+    const key = `${userId}:${flagKey}:${salt}`;
+    const hash = murmur.murmur3(key);
+    return hash % 100;
+  }
 
   private async refresh(): Promise<void> {
     await this.fetchSnapshot();

@@ -5,9 +5,15 @@
   "private": true,
   "scripts": {
     "build": "tsc -p .",
-    "test": "node ./tests/live-update.spec.js"
+    "test": "node ./tests/live-update.spec.js",
+    "test:rollout": "node ./tests/rollout.spec.js",
+    "test:unit": "node ./tests/rollout.spec.js"
   },
   "devDependencies": {
+    "@types/murmurhash-js": "^1.0.6",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "murmurhash-js": "^1.0.0"
   }
 }

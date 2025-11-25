@@ -13,6 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Variant represents a variant in an A/B test (mirrored from store for JSON)
+type Variant struct {
+	Name   string         `json:"name"`
+	Weight int            `json:"weight"`
+	Config map[string]any `json:"config,omitempty"`
+}
+
 type FlagView struct {
 	Key         string         `json:"key"`
 	Description string         `json:"description"`
@@ -20,22 +27,30 @@ type FlagView struct {
 	Rollout     int32          `json:"rollout"`
 	Expression  *string        `json:"expression,omitempty"`
 	Config      map[string]any `json:"config,omitempty"`
+	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
 	Env         string         `json:"env"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
 }
 
 type Snapshot struct {
-	ETag      string              `json:"etag"`
-	Flags     map[string]FlagView `json:"flags"`
-	UpdatedAt time.Time           `json:"updatedAt"`
+	ETag       string              `json:"etag"`
+	Flags      map[string]FlagView `json:"flags"`
+	UpdatedAt  time.Time           `json:"updatedAt"`
+	RolloutSalt string             `json:"rolloutSalt,omitempty"` // Salt for client-side rollout evaluation
 }
 
 var current unsafe.Pointer // *Snapshot
+var rolloutSalt string     // Global rollout salt
+
+// SetRolloutSalt sets the global rollout salt for the snapshot
+func SetRolloutSalt(salt string) {
+	rolloutSalt = salt
+}
 
 func Load() *Snapshot {
 	ptr := atomic.LoadPointer(&current)
 	if ptr == nil {
-		return &Snapshot{ETag: "", Flags: map[string]FlagView{}, UpdatedAt: time.Now().UTC()}
+		return &Snapshot{ETag: "", Flags: map[string]FlagView{}, UpdatedAt: time.Now().UTC(), RolloutSalt: rolloutSalt}
 	}
 	return (*Snapshot)(ptr)
 }
@@ -71,13 +86,25 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 	blob, _ := json.Marshal(flags)
 	sum := sha256.Sum256(blob)
 	etag := `W/"` + hex.EncodeToString(sum[:]) + `"`
-	return &Snapshot{ETag: etag, Flags: flags, UpdatedAt: time.Now().UTC()}
+	return &Snapshot{ETag: etag, Flags: flags, UpdatedAt: time.Now().UTC(), RolloutSalt: rolloutSalt}
 }
 
 // BuildFromFlags creates a snapshot from store.Flag objects.
 func BuildFromFlags(flags []store.Flag) *Snapshot {
 	flagMap := make(map[string]FlagView, len(flags))
 	for _, f := range flags {
+		// Convert store.Variant to snapshot.Variant
+		var variants []Variant
+		if len(f.Variants) > 0 {
+			variants = make([]Variant, len(f.Variants))
+			for i, v := range f.Variants {
+				variants[i] = Variant{
+					Name:   v.Name,
+					Weight: v.Weight,
+					Config: v.Config,
+				}
+			}
+		}
 		flagMap[f.Key] = FlagView{
 			Key:         f.Key,
 			Description: f.Description,
@@ -85,6 +112,7 @@ func BuildFromFlags(flags []store.Flag) *Snapshot {
 			Rollout:     f.Rollout,
 			Expression:  f.Expression,
 			Config:      f.Config,
+			Variants:    variants,
 			Env:         f.Env,
 			UpdatedAt:   f.UpdatedAt,
 		}
@@ -92,7 +120,7 @@ func BuildFromFlags(flags []store.Flag) *Snapshot {
 	blob, _ := json.Marshal(flagMap)
 	sum := sha256.Sum256(blob)
 	etag := `W/"` + hex.EncodeToString(sum[:]) + `"`
-	return &Snapshot{ETag: etag, Flags: flagMap, UpdatedAt: time.Now().UTC()}
+	return &Snapshot{ETag: etag, Flags: flagMap, UpdatedAt: time.Now().UTC(), RolloutSalt: rolloutSalt}
 }
 
 func Update(s *Snapshot) {

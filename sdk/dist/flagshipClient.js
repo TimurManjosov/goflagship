@@ -1,3 +1,5 @@
+// sdk/flagshipClient.ts
+import murmur from 'murmurhash-js';
 export class FlagshipClient {
     constructor(opts = {}) {
         this.base = 'http://localhost:8080';
@@ -9,7 +11,8 @@ export class FlagshipClient {
         this.rMax = 10000;
         this.stopping = false;
         this.base = opts.baseUrl ?? this.base;
-        // ✅ bind fetch to the global object to avoid “Illegal invocation”
+        this.user = opts.user;
+        // ✅ bind fetch to the global object to avoid "Illegal invocation"
         const f = opts.fetchImpl ?? globalThis.fetch;
         if (!f)
             throw new Error('fetch is not available in this environment');
@@ -28,11 +31,92 @@ export class FlagshipClient {
     isReady() {
         return !!this.cache;
     }
-    isEnabled(key) {
-        return !!this.cache?.flags?.[key]?.enabled;
+    /**
+     * Set or update the user context for rollout evaluation.
+     * Call this when the user logs in or their identity changes.
+     */
+    setUser(user) {
+        this.user = user;
     }
+    /**
+     * Get the current user context.
+     */
+    getUser() {
+        return this.user;
+    }
+    /**
+     * Check if a flag is enabled for the current user.
+     * Takes into account the flag's enabled state and rollout percentage.
+     *
+     * @param key - The flag key
+     * @returns true if the flag is enabled and the user is within the rollout percentage
+     */
+    isEnabled(key) {
+        const flag = this.cache?.flags?.[key];
+        if (!flag)
+            return false;
+        if (!flag.enabled)
+            return false;
+        // If rollout is 100, always enabled
+        if (flag.rollout >= 100)
+            return true;
+        // If rollout is 0, always disabled
+        if (flag.rollout <= 0)
+            return false;
+        // Need user context for partial rollout
+        if (!this.user?.id)
+            return false;
+        // Calculate bucket and check rollout
+        const bucket = this.bucketUser(this.user.id, key);
+        return bucket < flag.rollout;
+    }
+    /**
+     * Get the config for a flag.
+     */
     getConfig(key) {
         return this.cache?.flags?.[key]?.config;
+    }
+    /**
+     * Get the variant name assigned to the current user for a flag.
+     * Returns undefined if no variants are defined or user context is missing.
+     *
+     * @param key - The flag key
+     * @returns The variant name or undefined
+     */
+    getVariant(key) {
+        const flag = this.cache?.flags?.[key];
+        if (!flag || !flag.variants || flag.variants.length === 0)
+            return undefined;
+        if (!this.user?.id)
+            return undefined;
+        const bucket = this.bucketUser(this.user.id, key);
+        // Find variant based on cumulative weights
+        let cumulative = 0;
+        for (const variant of flag.variants) {
+            cumulative += variant.weight;
+            if (bucket < cumulative) {
+                return variant.name;
+            }
+        }
+        // Fallback to last variant (should not happen if weights sum to 100)
+        return flag.variants[flag.variants.length - 1]?.name;
+    }
+    /**
+     * Get the config for the variant assigned to the current user.
+     * Returns undefined if no variants or user context is missing.
+     *
+     * @param key - The flag key
+     * @returns The variant config or undefined
+     */
+    getVariantConfig(key) {
+        const variantName = this.getVariant(key);
+        if (!variantName)
+            return undefined;
+        const flag = this.cache?.flags?.[key];
+        if (!flag?.variants)
+            return undefined;
+        const variant = flag.variants.find((v) => v.name === variantName);
+        return variant?.config;
     }
     keys() {
         return Object.keys(this.cache?.flags ?? {});
@@ -55,6 +139,16 @@ export class FlagshipClient {
         this.es = null;
     }
     // ---- internals ----
+    /**
+     * Calculate the bucket (0-99) for a user and flag using MurmurHash3.
+     * This is deterministic: same user + flag + salt = same bucket.
+     */
+    bucketUser(userId, flagKey) {
+        const salt = this.cache?.rolloutSalt ?? '';
+        const key = `${userId}:${flagKey}:${salt}`;
+        const hash = murmur.murmur3(key);
+        return hash % 100;
+    }
     async refresh() {
         await this.fetchSnapshot();
     }
