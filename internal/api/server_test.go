@@ -248,6 +248,54 @@ func TestUpsertFlag_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestUpsertFlag_InvalidExpression(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	// Invalid expression (not valid JSON)
+	body := `{
+		"key": "test_flag",
+		"enabled": true,
+		"rollout": 100,
+		"expression": "not valid json logic"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestUpsertFlag_ValidExpression(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	// Valid JSON Logic expression
+	body := `{
+		"key": "test_flag",
+		"enabled": true,
+		"rollout": 100,
+		"expression": "{\"==\": [{\"var\": \"plan\"}, \"premium\"]}"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestUpsertFlag_MissingKey(t *testing.T) {
 	st := store.NewMemoryStore()
 	srv := NewServer(st, "prod", "admin-key")
