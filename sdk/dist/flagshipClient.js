@@ -1,5 +1,6 @@
 // sdk/flagshipClient.ts
 import murmur from 'murmurhash-js';
+import jsonLogic from 'json-logic-js';
 export class FlagshipClient {
     constructor(opts = {}) {
         this.base = 'http://localhost:8080';
@@ -46,10 +47,10 @@ export class FlagshipClient {
     }
     /**
      * Check if a flag is enabled for the current user.
-     * Takes into account the flag's enabled state and rollout percentage.
+     * Takes into account the flag's enabled state, targeting expression, and rollout percentage.
      *
      * @param key - The flag key
-     * @returns true if the flag is enabled and the user is within the rollout percentage
+     * @returns true if the flag is enabled and the user matches targeting rules
      */
     isEnabled(key) {
         const flag = this.cache?.flags?.[key];
@@ -57,7 +58,13 @@ export class FlagshipClient {
             return false;
         if (!flag.enabled)
             return false;
-        // If rollout is 100, always enabled
+        // Check expression targeting if present
+        if (flag.expression) {
+            const matches = this.evaluateExpression(flag.expression);
+            if (!matches)
+                return false;
+        }
+        // If rollout is 100, always enabled (after expression check)
         if (flag.rollout >= 100)
             return true;
         // If rollout is 0, always disabled
@@ -139,6 +146,30 @@ export class FlagshipClient {
         this.es = null;
     }
     // ---- internals ----
+    /**
+     * Evaluate a JSON Logic expression against the user context.
+     * Returns true if the expression matches, false otherwise.
+     * Returns false if expression parsing fails or user context is missing.
+     */
+    evaluateExpression(expression) {
+        try {
+            // Parse the expression (it's stored as a JSON string)
+            const rule = JSON.parse(expression);
+            // Build the data context from user attributes
+            const data = {
+                ...this.user?.attributes,
+                id: this.user?.id,
+            };
+            // Apply JSON Logic rule
+            const result = jsonLogic.apply(rule, data);
+            // Convert result to boolean (JSON Logic can return various types)
+            return Boolean(result);
+        }
+        catch {
+            // If expression parsing fails, treat as not matching
+            return false;
+        }
+    }
     /**
      * Calculate the bucket (0-99) for a user and flag using MurmurHash3.
      * This is deterministic: same user + flag + salt = same bucket.

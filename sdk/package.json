@@ -6,13 +6,15 @@
   "scripts": {
     "build": "tsc -p .",
     "test": "node ./tests/live-update.spec.js",
-    "test:unit": "node ./tests/rollout.spec.js"
+    "test:unit": "node ./tests/rollout.spec.js && node ./tests/expression.spec.js"
   },
   "devDependencies": {
+    "@types/json-logic-js": "^2.0.8",
     "@types/murmurhash-js": "^1.0.6",
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "json-logic-js": "^2.0.5",
     "murmurhash-js": "^1.0.0"
   }
 }
