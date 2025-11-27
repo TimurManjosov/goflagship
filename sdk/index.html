@@ -3,31 +3,60 @@
 <title>go-flagship demo</title>
 <pre id="out">loading…</pre>
 
+<script type="importmap">
+  {
+    "imports": {
+      "murmurhash-js": "https://esm.sh/murmurhash-js@1.0.0",
+      "json-logic-js": "https://esm.sh/json-logic-js@2.0.5"
+    }
+  }
+</script>
+
 <script type="module">
-  import { FlagshipClient } from './dist/flagshipClient.js';
+  try {
+    console.log('Starting import...');
+    const { FlagshipClient } = await import('./dist/flagshipClient.js');
+    console.log('FlagshipClient imported:', FlagshipClient);
 
-  const out = document.getElementById('out');
-  const client = new FlagshipClient({ baseUrl: 'http://localhost:8080' });
+    const out = document.getElementById('out');
+    const client = new FlagshipClient({ baseUrl: 'http://localhost:8080' });
+    console.log('Client created');
 
-  client.on('ready', render);
-  client.on('update', render);
-  client.on('error', (e) => console.warn('SDK error:', e));
+    client.on('ready', () => {
+      console.log('Client ready!');
+      render();
+    });
+    client.on('update', (etag) => {
+      console.log('Update received:', etag);
+      render();
+    });
+    client.on('error', (e) => {
+      console.error('SDK error:', e);
+      out.textContent = 'Error: ' + e.message;
+    });
 
-  await client.init();
+    console.log('Initializing client...');
+    await client.init();
+    console.log('Client initialized');
 
-  function render() {
-    const flags = client.keys().map((k) => ({
-      key: k,
-      enabled: client.isEnabled(k),
-      config: client.getConfig(k),
-    }));
-    out.textContent = JSON.stringify(
-      {
-        etag: client['cache']?.etag, // debug only
-        flags,
-      },
-      null,
-      2
-    );
+    function render() {
+      console.log('Rendering...');
+      const flags = client.keys().map((k) => ({
+        key: k,
+        enabled: client.isEnabled(k),
+        config: client.getConfig(k),
+      }));
+      out.textContent = JSON.stringify(
+        {
+          etag: client['cache']?.etag,
+          flags,
+        },
+        null,
+        2
+      );
+    }
+  } catch (error) {
+    console.error('Failed to initialize:', error);
+    document.getElementById('out').textContent = 'Failed to load: ' + error.message;
   }
 </script>
