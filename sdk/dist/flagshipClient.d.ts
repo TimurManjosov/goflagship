@@ -74,7 +74,8 @@ export declare class FlagshipClient {
     close(): void;
     /**
      * Evaluate a JSON Logic expression against the current user context.
-     * Returns true if the expression matches (or if expression is invalid/empty).
+     * Returns true if the expression matches, false if it doesn't match or is invalid.
+     * For security, invalid expressions fail closed (return false).
      *
      * @param expression - JSON Logic expression string
      * @returns true if user matches the expression

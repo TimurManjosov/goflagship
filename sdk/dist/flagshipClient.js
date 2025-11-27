@@ -148,7 +148,8 @@ export class FlagshipClient {
     // ---- internals ----
     /**
      * Evaluate a JSON Logic expression against the current user context.
-     * Returns true if the expression matches (or if expression is invalid/empty).
+     * Returns true if the expression matches, false if it doesn't match or is invalid.
+     * For security, invalid expressions fail closed (return false).
      *
      * @param expression - JSON Logic expression string
      * @returns true if user matches the expression
@@ -173,9 +174,9 @@ export class FlagshipClient {
             return Boolean(result);
         }
         catch {
-            // If expression is invalid, fail open (return true)
-            // This allows the rollout/enabled checks to proceed
-            return true;
+            // For security, fail closed on invalid expressions
+            // This prevents accidental access when expressions are malformed
+            return false;
         }
     }
     /**

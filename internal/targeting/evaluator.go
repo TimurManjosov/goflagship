@@ -35,14 +35,8 @@ func Evaluate(expression string, context UserContext) (bool, error) {
 		return false, ErrInvalidExpression
 	}
 
-	// Build the data object from context
-	data := make(map[string]any)
-	for k, v := range context {
-		data[k] = v
-	}
-
-	// Convert data to JSON reader
-	dataJSON, err := json.Marshal(data)
+	// Convert context directly to JSON (it's already map[string]any)
+	dataJSON, err := json.Marshal(context)
 	if err != nil {
 		return false, ErrEvaluationFailed
 	}
