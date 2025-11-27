@@ -43,10 +43,10 @@ export declare class FlagshipClient {
     getUser(): UserContext | undefined;
     /**
      * Check if a flag is enabled for the current user.
-     * Takes into account the flag's enabled state and rollout percentage.
+     * Takes into account the flag's enabled state, targeting expression, and rollout percentage.
      *
      * @param key - The flag key
-     * @returns true if the flag is enabled and the user is within the rollout percentage
+     * @returns true if the flag is enabled and the user matches targeting rules
      */
     isEnabled(key: string): boolean;
     /**
@@ -72,6 +72,14 @@ export declare class FlagshipClient {
     keys(): string[];
     on<T extends keyof Events>(ev: T, fn: Events[T]): () => void;
     close(): void;
+    /**
+     * Evaluate a JSON Logic expression against the current user context.
+     * Returns true if the expression matches (or if expression is invalid/empty).
+     *
+     * @param expression - JSON Logic expression string
+     * @returns true if user matches the expression
+     */
+    private evaluateExpression;
     /**
      * Calculate the bucket (0-99) for a user and flag using MurmurHash3.
      * This is deterministic: same user + flag + salt = same bucket.

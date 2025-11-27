@@ -317,6 +317,54 @@ func TestUpsertFlag_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestUpsertFlag_ValidExpression(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	body := `{
+		"key": "targeted_flag",
+		"description": "Flag with targeting",
+		"enabled": true,
+		"rollout": 100,
+		"expression": "{\"==\": [{\"var\": \"plan\"}, \"premium\"]}"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestUpsertFlag_InvalidExpression(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	body := `{
+		"key": "targeted_flag",
+		"description": "Flag with invalid targeting",
+		"enabled": true,
+		"rollout": 100,
+		"expression": "not valid json"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestUpsertFlag_Forbidden(t *testing.T) {
 	st := store.NewMemoryStore()
 	srv := NewServer(st, "prod", "admin-key")

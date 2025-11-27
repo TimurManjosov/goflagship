@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/TimurManjosov/goflagship/internal/auth"
+	"github.com/TimurManjosov/goflagship/internal/targeting"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -278,6 +279,14 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	if err := validateVariants(req.Variants); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// Validate expression if provided
+	if req.Expression != nil && *req.Expression != "" {
+		if err := targeting.Validate(*req.Expression); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid expression: "+err.Error())
+			return
+		}
 	}
 
 	// Convert variants to store type

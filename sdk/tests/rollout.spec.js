@@ -60,6 +60,39 @@ const mockSnapshot = {
       env: 'test',
       updatedAt: new Date().toISOString(),
     },
+    // Expression-based targeting flags
+    'premium-only': {
+      key: 'premium-only',
+      enabled: true,
+      rollout: 100,
+      expression: '{"==": [{"var": "plan"}, "premium"]}',
+      env: 'test',
+      updatedAt: new Date().toISOString(),
+    },
+    'us-users': {
+      key: 'us-users',
+      enabled: true,
+      rollout: 100,
+      expression: '{"in": [{"var": "country"}, ["US", "CA"]]}',
+      env: 'test',
+      updatedAt: new Date().toISOString(),
+    },
+    'complex-targeting': {
+      key: 'complex-targeting',
+      enabled: true,
+      rollout: 100,
+      expression: '{"or": [{"and": [{"==": [{"var": "plan"}, "premium"]}, {"in": [{"var": "country"}, ["US", "CA"]]}]}, {"==": [{"var": "betaTester"}, true]}]}',
+      env: 'test',
+      updatedAt: new Date().toISOString(),
+    },
+    'expression-with-rollout': {
+      key: 'expression-with-rollout',
+      enabled: true,
+      rollout: 50,
+      expression: '{"==": [{"var": "plan"}, "premium"]}',
+      env: 'test',
+      updatedAt: new Date().toISOString(),
+    },
   },
   updatedAt: new Date().toISOString(),
   rolloutSalt: 'test-salt-12345',
@@ -254,6 +287,161 @@ async function runTests() {
     // Allow 10% variance (40-60%)
     assertTrue(percentage >= 40 && percentage <= 60,
       `Expected ~50% enabled, got ${percentage.toFixed(1)}%`);
+  });
+
+  // ---- Expression Evaluation Tests ----
+
+  // Test 15: Simple expression - premium only
+  test('Expression: premium-only returns true for premium users', () => {
+    const premiumClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-1', attributes: { plan: 'premium' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    premiumClient['cache'] = mockSnapshot;
+    assertTrue(premiumClient.isEnabled('premium-only'));
+  });
+
+  test('Expression: premium-only returns false for free users', () => {
+    const freeClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-2', attributes: { plan: 'free' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    freeClient['cache'] = mockSnapshot;
+    assertFalse(freeClient.isEnabled('premium-only'));
+  });
+
+  // Test 16: IN array expression
+  test('Expression: us-users returns true for US users', () => {
+    const usClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-3', attributes: { country: 'US' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    usClient['cache'] = mockSnapshot;
+    assertTrue(usClient.isEnabled('us-users'));
+  });
+
+  test('Expression: us-users returns true for CA users', () => {
+    const caClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-4', attributes: { country: 'CA' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    caClient['cache'] = mockSnapshot;
+    assertTrue(caClient.isEnabled('us-users'));
+  });
+
+  test('Expression: us-users returns false for UK users', () => {
+    const ukClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-5', attributes: { country: 'UK' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    ukClient['cache'] = mockSnapshot;
+    assertFalse(ukClient.isEnabled('us-users'));
+  });
+
+  // Test 17: Complex expression (premium in US/CA OR beta tester)
+  test('Expression: complex-targeting returns true for premium US user', () => {
+    const premiumUsClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-6', attributes: { plan: 'premium', country: 'US', betaTester: false } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    premiumUsClient['cache'] = mockSnapshot;
+    assertTrue(premiumUsClient.isEnabled('complex-targeting'));
+  });
+
+  test('Expression: complex-targeting returns false for premium UK user (not beta)', () => {
+    const premiumUkClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-7', attributes: { plan: 'premium', country: 'UK', betaTester: false } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    premiumUkClient['cache'] = mockSnapshot;
+    assertFalse(premiumUkClient.isEnabled('complex-targeting'));
+  });
+
+  test('Expression: complex-targeting returns true for free UK beta tester', () => {
+    const betaTesterClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-8', attributes: { plan: 'free', country: 'UK', betaTester: true } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    betaTesterClient['cache'] = mockSnapshot;
+    assertTrue(betaTesterClient.isEnabled('complex-targeting'));
+  });
+
+  // Test 18: Expression with rollout - only premium AND in rollout
+  test('Expression with rollout: non-premium users are excluded regardless of rollout', () => {
+    const freeClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-9', attributes: { plan: 'free' } },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    freeClient['cache'] = mockSnapshot;
+    // Should be false because expression fails
+    assertFalse(freeClient.isEnabled('expression-with-rollout'));
+  });
+
+  // Test 19: No user attributes - should fail expression
+  test('Expression: missing attributes returns false', () => {
+    const noAttrsClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'user-10' }, // No attributes
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    noAttrsClient['cache'] = mockSnapshot;
+    assertFalse(noAttrsClient.isEnabled('premium-only'));
+  });
+
+  // Test 20: User ID is passed to expression context
+  test('Expression: user id is available in context', () => {
+    // Create a flag with expression checking user id
+    const idCheckSnapshot = {
+      ...mockSnapshot,
+      flags: {
+        ...mockSnapshot.flags,
+        'id-check': {
+          key: 'id-check',
+          enabled: true,
+          rollout: 100,
+          expression: '{"==": [{"var": "id"}, "special-user"]}',
+          env: 'test',
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    };
+    
+    const specialClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'special-user' },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    specialClient['cache'] = idCheckSnapshot;
+    assertTrue(specialClient.isEnabled('id-check'));
+    
+    const normalClient = new FlagshipClient({
+      baseUrl: 'http://localhost:8080',
+      user: { id: 'normal-user' },
+      fetchImpl: createMockFetch(),
+      eventSourceImpl: MockEventSource,
+    });
+    normalClient['cache'] = idCheckSnapshot;
+    assertFalse(normalClient.isEnabled('id-check'));
   });
 
   console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
