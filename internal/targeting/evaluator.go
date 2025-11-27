@@ -12,7 +12,14 @@ import (
 )
 
 // UserContext represents user attributes for targeting evaluation.
-// Standard attributes follow common feature flag conventions.
+// Common attributes include:
+//   - id: user identifier (string)
+//   - email: user email address (string)
+//   - plan: subscription plan, e.g., "free", "premium", "enterprise" (string)
+//   - country: ISO 3166-1 alpha-2 country code, e.g., "US", "CA" (string)
+//   - age: user age (number)
+//   - isBeta: whether user is a beta tester (bool)
+//   - customAttributes: any additional attributes
 type UserContext map[string]any
 
 // ErrInvalidExpression is returned when an expression is not valid JSON Logic.
@@ -29,11 +36,6 @@ func Evaluate(expression string, ctx UserContext) (bool, error) {
 		return false, ErrEmptyExpression
 	}
 
-	var rule any
-	if err := json.Unmarshal([]byte(expression), &rule); err != nil {
-		return false, ErrInvalidExpression
-	}
-
 	// Convert context to JSON
 	dataBytes, err := json.Marshal(ctx)
 	if err != nil {
@@ -45,9 +47,9 @@ func Evaluate(expression string, ctx UserContext) (bool, error) {
 	dataReader := bytes.NewReader(dataBytes)
 	var resultBuf bytes.Buffer
 
-	// Apply the rule
+	// Apply the rule - this will fail if expression is not valid JSON
 	if err := jsonlogic.Apply(ruleReader, dataReader, &resultBuf); err != nil {
-		return false, err
+		return false, ErrInvalidExpression
 	}
 
 	// Parse result

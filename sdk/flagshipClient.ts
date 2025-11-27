@@ -230,7 +230,7 @@ export class FlagshipClient {
       
       // Build the data context from user attributes
       const data: Record<string, unknown> = {
-        ...this.user?.attributes,
+        ...(this.user?.attributes ?? {}),
         id: this.user?.id,
       };
 

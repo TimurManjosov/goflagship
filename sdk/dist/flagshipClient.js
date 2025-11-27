@@ -157,7 +157,7 @@ export class FlagshipClient {
             const rule = JSON.parse(expression);
             // Build the data context from user attributes
             const data = {
-                ...this.user?.attributes,
+                ...(this.user?.attributes ?? {}),
                 id: this.user?.id,
             };
             // Apply JSON Logic rule
