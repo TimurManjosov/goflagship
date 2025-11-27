@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/TimurManjosov/goflagship/internal/auth"
+	"github.com/TimurManjosov/goflagship/internal/snapshot"
+	"github.com/TimurManjosov/goflagship/internal/store"
+	"github.com/TimurManjosov/goflagship/internal/targeting"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-
-	"github.com/TimurManjosov/goflagship/internal/snapshot"
-	"github.com/TimurManjosov/goflagship/internal/store"
 )
 
 type Server struct {
@@ -278,6 +278,14 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	if err := validateVariants(req.Variants); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// Validate expression if provided
+	if req.Expression != nil && *req.Expression != "" {
+		if err := targeting.ValidateExpression(*req.Expression); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid expression: "+err.Error())
+			return
+		}
 	}
 
 	// Convert variants to store type

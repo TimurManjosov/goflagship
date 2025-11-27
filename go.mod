@@ -4,12 +4,14 @@ go 1.25.3
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/diegoholiveira/jsonlogic/v3 v3.8.6
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/spf13/viper v1.21.0
 )
 
 require (
+	github.com/barkimedes/go-deepcopy v0.0.0-20220514131651-17c30cfc62df // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
