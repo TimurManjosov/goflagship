@@ -88,6 +88,15 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/healthz", s.handleHealth)
 		r.Get("/v1/flags/snapshot", s.handleSnapshot)
+
+		// Evaluate endpoint - public, no auth required by default
+		// Higher rate limit for evaluation (300 req/min per IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(300, time.Minute))
+			r.Post("/v1/flags/evaluate", s.handleEvaluate)
+			r.Get("/v1/flags/evaluate", s.handleEvaluateGET)
+		})
+
 		r.Route("/v1/flags", func(r chi.Router) {
 			r.Use(s.auth.RequireAuth(auth.RoleAdmin))
 			r.Post("/", s.handleUpsertFlag)
