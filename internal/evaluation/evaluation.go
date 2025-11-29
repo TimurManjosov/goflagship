@@ -81,8 +81,15 @@ func EvaluateFlag(flag snapshot.FlagView, ctx Context, salt string) Result {
 			result.Variant = variantName
 
 			// Get variant-specific config
-			variantConfig, _ := rollout.GetVariantConfig(ctx.UserID, flag.Key, variants, salt)
-			if variantConfig != nil {
+			// Note: We've already validated variants work in GetVariant above,
+			// so GetVariantConfig should succeed. Fall back to flag config on error.
+			variantConfig, err := rollout.GetVariantConfig(ctx.UserID, flag.Key, variants, salt)
+			if err != nil {
+				// Fall back to flag-level config on error
+				if flag.Config != nil {
+					result.Config = flag.Config
+				}
+			} else if variantConfig != nil {
 				result.Config = variantConfig
 			} else if flag.Config != nil {
 				// Fall back to flag-level config if no variant config
