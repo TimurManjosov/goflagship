@@ -491,6 +491,173 @@
         background: rgba(248, 113, 113, 0.18);
         border-color: rgba(248, 113, 113, 0.8);
       }
+
+      /* Error banner styles */
+      .error-banner {
+        display: none;
+        margin-top: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: rgba(248, 113, 113, 0.12);
+        border: 1px solid rgba(248, 113, 113, 0.4);
+        animation: slideIn 0.2s ease-out;
+      }
+
+      .error-banner.visible {
+        display: block;
+      }
+
+      .error-banner-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .error-banner-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #fecaca;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .error-banner-code {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(248, 113, 113, 0.2);
+        color: #fca5a5;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      .error-banner-message {
+        font-size: 12px;
+        color: #fecaca;
+        margin-top: 6px;
+      }
+
+      .error-banner-fields {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(248, 113, 113, 0.25);
+      }
+
+      .error-field-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 12px;
+      }
+
+      .error-field-name {
+        font-weight: 600;
+        color: #fca5a5;
+        min-width: 80px;
+      }
+
+      .error-field-message {
+        color: #fecaca;
+        flex: 1;
+      }
+
+      .error-banner-dismiss {
+        background: transparent;
+        border: none;
+        color: #fca5a5;
+        cursor: pointer;
+        padding: 4px;
+        font-size: 16px;
+        line-height: 1;
+        opacity: 0.7;
+        transition: opacity 0.15s ease;
+      }
+
+      .error-banner-dismiss:hover {
+        opacity: 1;
+      }
+
+      .error-banner-request-id {
+        font-size: 10px;
+        color: #f87171;
+        margin-top: 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        opacity: 0.8;
+      }
+
+      /* Field error highlight */
+      .field-error input,
+      .field-error select,
+      .field-error textarea {
+        border-color: rgba(248, 113, 113, 0.8) !important;
+        box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.4) !important;
+      }
+
+      .field-error-text {
+        font-size: 11px;
+        color: #fca5a5;
+        margin-top: 4px;
+      }
+
+      /* Success toast styles */
+      .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        font-size: 13px;
+        z-index: 1000;
+        animation: slideIn 0.3s ease-out;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      }
+
+      .toast.success {
+        background: rgba(22, 163, 74, 0.9);
+        color: #bbf7d0;
+        border: 1px solid rgba(34, 197, 94, 0.6);
+      }
+
+      .toast.error {
+        background: rgba(220, 38, 38, 0.9);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Loading spinner */
+      .btn-loading {
+        pointer-events: none;
+        opacity: 0.7;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
     </style>
   </head>
   <body>
@@ -554,8 +721,23 @@
             <div class="chip-secondary" id="selectedFlagChip">New flag</div>
           </div>
 
+          <!-- Error Banner -->
+          <div class="error-banner" id="errorBanner">
+            <div class="error-banner-header">
+              <div class="error-banner-title">
+                <span>⚠️</span>
+                <span id="errorBannerTitle">Error</span>
+                <span class="error-banner-code" id="errorBannerCode"></span>
+              </div>
+              <button type="button" class="error-banner-dismiss" id="dismissError" title="Dismiss">×</button>
+            </div>
+            <div class="error-banner-message" id="errorBannerMessage"></div>
+            <div class="error-banner-fields" id="errorBannerFields"></div>
+            <div class="error-banner-request-id" id="errorBannerRequestId"></div>
+          </div>
+
           <form id="flagForm">
-            <div class="field-group">
+            <div class="field-group" id="fieldGroupKey">
               <label class="field-label">Key</label>
               <input
                 type="text"
@@ -566,18 +748,20 @@
               <div class="helper-text">
                 Flag identifier. Click a row in the table to load its key here.
               </div>
+              <div class="field-error-text" id="fieldErrorKey"></div>
             </div>
 
-            <div class="field-group">
+            <div class="field-group" id="fieldGroupEnv">
               <label class="field-label">Environment</label>
               <select id="flagEnv">
                 <option value="prod">prod</option>
                 <option value="staging">staging</option>
                 <option value="dev">dev</option>
               </select>
+              <div class="field-error-text" id="fieldErrorEnv"></div>
             </div>
 
-            <div class="field-group">
+            <div class="field-group" id="fieldGroupDesc">
               <label class="field-label">Description</label>
               <input
                 type="text"
@@ -585,6 +769,7 @@
                 placeholder="e.g. Homepage banner experiment"
                 autocomplete="off"
               />
+              <div class="field-error-text" id="fieldErrorDescription"></div>
             </div>
 
             <div class="field-group">
@@ -597,7 +782,7 @@
               </div>
             </div>
 
-            <div class="field-group">
+            <div class="field-group" id="fieldGroupConfig">
               <label class="field-label">Config (JSON)</label>
               <textarea id="flagConfig" spellcheck="false" autocomplete="off">
 { "text": "Hello world" }</textarea
@@ -606,12 +791,14 @@
                 Must be valid JSON object. Example:
                 <span class="code">{ "variant": "A", "limit": 10 }</span>
               </div>
+              <div class="field-error-text" id="fieldErrorConfig"></div>
             </div>
 
             <div class="field-group small-cols">
-              <div>
+              <div id="fieldGroupRollout">
                 <label class="field-label">Rollout %</label>
                 <input type="text" id="flagRollout" value="100" />
+                <div class="field-error-text" id="fieldErrorRollout"></div>
               </div>
               <div>
                 <label class="field-label">Admin API key</label>
@@ -629,12 +816,15 @@
             <div class="btn-row">
               <button type="button" class="btn-secondary" id="newFlagBtn">New flag</button>
               <button type="button" class="btn-secondary btn-danger" id="deleteFlagBtn">Delete flag</button>
-              <button type="submit" class="btn-primary">Save flag</button>
+              <button type="submit" class="btn-primary" id="saveBtn">Save flag</button>
             </div>
           </form>
         </div>
       </div>
     </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer"></div>
 
     <script>
       // Determine API_BASE dynamically: use ?api_base=... query param if present, else hardcoded localhost:8080
@@ -687,6 +877,173 @@
         if (kind === 'error') formStatus.classList.add('error');
         else if (kind === 'success') formStatus.classList.add('success');
       }
+
+      // Error banner elements
+      const errorBanner = document.getElementById('errorBanner');
+      const errorBannerTitle = document.getElementById('errorBannerTitle');
+      const errorBannerCode = document.getElementById('errorBannerCode');
+      const errorBannerMessage = document.getElementById('errorBannerMessage');
+      const errorBannerFields = document.getElementById('errorBannerFields');
+      const errorBannerRequestId = document.getElementById('errorBannerRequestId');
+      const dismissErrorBtn = document.getElementById('dismissError');
+      const saveBtn = document.getElementById('saveBtn');
+
+      // Field error elements
+      const fieldGroups = {
+        key: { group: document.getElementById('fieldGroupKey'), error: document.getElementById('fieldErrorKey') },
+        env: { group: document.getElementById('fieldGroupEnv'), error: document.getElementById('fieldErrorEnv') },
+        description: { group: document.getElementById('fieldGroupDesc'), error: document.getElementById('fieldErrorDescription') },
+        config: { group: document.getElementById('fieldGroupConfig'), error: document.getElementById('fieldErrorConfig') },
+        rollout: { group: document.getElementById('fieldGroupRollout'), error: document.getElementById('fieldErrorRollout') }
+      };
+
+      // Clear all field errors
+      function clearFieldErrors() {
+        Object.values(fieldGroups).forEach(({ group, error }) => {
+          if (group) group.classList.remove('field-error');
+          if (error) {
+            error.textContent = '';
+            error.style.display = 'none';
+          }
+        });
+      }
+
+      // Set field error
+      function setFieldError(fieldName, message) {
+        const field = fieldGroups[fieldName];
+        if (field) {
+          if (field.group) field.group.classList.add('field-error');
+          if (field.error) {
+            field.error.textContent = message;
+            field.error.style.display = 'block';
+          }
+        }
+      }
+
+      // Show error banner with structured error response
+      function showErrorBanner(errorResponse, httpStatus) {
+        clearFieldErrors();
+        hideErrorBanner();
+
+        // Set banner content
+        errorBannerTitle.textContent = errorResponse.error || 'Error';
+        errorBannerCode.textContent = errorResponse.code || '';
+        errorBannerCode.style.display = errorResponse.code ? 'inline' : 'none';
+        errorBannerMessage.textContent = errorResponse.message || 'An error occurred';
+
+        // Handle field-level errors
+        if (errorResponse.fields && Object.keys(errorResponse.fields).length > 0) {
+          errorBannerFields.style.display = 'block';
+          errorBannerFields.innerHTML = Object.entries(errorResponse.fields).map(([field, msg]) => {
+            // Also highlight the field in the form
+            setFieldError(field, msg);
+            return `<div class="error-field-item">
+              <span class="error-field-name">${escapeHtml(field)}:</span>
+              <span class="error-field-message">${escapeHtml(msg)}</span>
+            </div>`;
+          }).join('');
+        } else {
+          errorBannerFields.style.display = 'none';
+          errorBannerFields.innerHTML = '';
+        }
+
+        // Show request ID if available
+        if (errorResponse.request_id) {
+          errorBannerRequestId.textContent = `Request ID: ${errorResponse.request_id}`;
+          errorBannerRequestId.style.display = 'block';
+        } else {
+          errorBannerRequestId.style.display = 'none';
+        }
+
+        // Handle special status codes
+        handleSpecialStatusCodes(httpStatus, errorResponse);
+
+        errorBanner.classList.add('visible');
+      }
+
+      // Hide error banner
+      function hideErrorBanner() {
+        errorBanner.classList.remove('visible');
+        clearFieldErrors();
+      }
+
+      // Handle special HTTP status codes
+      function handleSpecialStatusCodes(status, errorResponse) {
+        switch (status) {
+          case 401:
+            errorBannerTitle.textContent = '🔒 Authentication Failed';
+            errorBannerMessage.textContent = errorResponse.message || 'Please check your API key and try again.';
+            break;
+          case 403:
+            errorBannerTitle.textContent = '🚫 Access Denied';
+            errorBannerMessage.textContent = errorResponse.message || 'You do not have permission to perform this action.';
+            break;
+          case 429:
+            errorBannerTitle.textContent = '⏰ Rate Limited';
+            errorBannerMessage.textContent = 'Too many requests. Please wait a moment and try again.';
+            break;
+          case 500:
+          case 502:
+          case 503:
+            errorBannerTitle.textContent = '⚠️ Server Error';
+            errorBannerMessage.textContent = 'A server error occurred. Please try again later.';
+            break;
+        }
+      }
+
+      // Escape HTML to prevent XSS
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Show toast notification
+      function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        document.getElementById('toastContainer').appendChild(toast);
+        
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(-10px)';
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      }
+
+      // Set loading state for button
+      function setButtonLoading(button, loading) {
+        if (loading) {
+          button.classList.add('btn-loading');
+          button.dataset.originalText = button.innerHTML;
+          button.innerHTML = '<span class="spinner"></span> Saving...';
+        } else {
+          button.classList.remove('btn-loading');
+          if (button.dataset.originalText) {
+            button.innerHTML = button.dataset.originalText;
+          }
+        }
+      }
+
+      // Handle API error response (structured or legacy)
+      function handleApiError(response, json, context = 'Operation') {
+        if (json && (json.code || json.fields)) {
+          // New structured error format
+          showErrorBanner(json, response.status);
+        } else {
+          // Legacy error format or network error
+          const message = json?.message || `${context} failed (HTTP ${response.status})`;
+          showErrorBanner({
+            error: response.statusText || 'Error',
+            message: message,
+            code: json?.code || null
+          }, response.status);
+        }
+      }
+
+      // Dismiss error banner
+      dismissErrorBtn.addEventListener('click', hideErrorBanner);
 
       function setSSEBadge(connected) {
         if (connected) {
@@ -814,6 +1171,8 @@
         configInput.value = '{ "text": "Hello world" }';
         rolloutInput.value = '100';
         selectedFlagChip.textContent = 'New flag';
+        hideErrorBanner();
+        clearFieldErrors();
         setStatus('Ready for new flag.');
         renderSnapshot(); // clear selection highlight
       }
@@ -899,6 +1258,8 @@
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        hideErrorBanner();
+        clearFieldErrors();
 
         const key = keyInput.value.trim();
         const env = envSelect.value.trim() || 'prod';
@@ -907,19 +1268,24 @@
         const rolloutStr = rolloutInput.value.trim() || '100';
         const adminKey = adminKeyInput.value.trim();
 
+        // Client-side validation
+        const clientErrors = {};
+        
         if (!key) {
-          setStatus('Key is required.', 'error');
-          return;
+          clientErrors.key = 'Key is required';
+        } else if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+          clientErrors.key = 'Key must contain only alphanumeric characters, underscores, and hyphens';
+        } else if (key.length > 64) {
+          clientErrors.key = 'Key must not exceed 64 characters';
         }
+        
         if (!adminKey) {
-          setStatus('Admin API key is required.', 'error');
-          return;
+          clientErrors.adminKey = 'Admin API key is required';
         }
 
         let rollout = Number(rolloutStr);
         if (!Number.isFinite(rollout) || rollout < 0 || rollout > 100) {
-          setStatus('Rollout must be a number between 0 and 100.', 'error');
-          return;
+          clientErrors.rollout = 'Rollout must be a number between 0 and 100';
         }
 
         let config;
@@ -927,11 +1293,21 @@
           const raw = configInput.value.trim() || '{}';
           config = JSON.parse(raw);
           if (typeof config !== 'object' || config === null || Array.isArray(config)) {
-            setStatus('Config must be a JSON object (not array, not null).', 'error');
-            return;
+            clientErrors.config = 'Config must be a JSON object (not array, not null)';
           }
         } catch (err) {
-          setStatus('Config JSON invalid: ' + err.message, 'error');
+          clientErrors.config = 'Invalid JSON: ' + err.message;
+        }
+
+        // Show client-side errors
+        if (Object.keys(clientErrors).length > 0) {
+          showErrorBanner({
+            error: 'Validation Error',
+            message: 'Please fix the errors below',
+            code: 'VALIDATION_ERROR',
+            fields: clientErrors
+          }, 400);
+          setStatus('Please fix validation errors.', 'error');
           return;
         }
 
@@ -946,6 +1322,8 @@
 
         try {
           setStatus('Saving flag…');
+          setButtonLoading(saveBtn, true);
+          
           const res = await fetch(API_BASE + '/v1/flags', {
             method: 'POST',
             headers: {
@@ -960,13 +1338,18 @@
             json = await res.json();
           } catch (parseErr) {
             console.error('Failed to parse response JSON:', parseErr);
-            setStatus('Save failed: Invalid JSON response from server.', 'error');
+            showErrorBanner({
+              error: 'Response Error',
+              message: 'Invalid JSON response from server',
+              code: 'PARSE_ERROR'
+            }, res.status);
+            setStatus('Save failed: Invalid response.', 'error');
             return;
           }
 
           if (!res.ok || json.ok === false) {
-            const msg = json.message || 'HTTP ' + res.status;
-            setStatus('Save failed: ' + msg, 'error');
+            handleApiError(res, json, 'Save');
+            setStatus('Save failed. See error above.', 'error');
             console.error('save error', res.status, json);
             return;
           }
@@ -975,10 +1358,20 @@
           // Update selected key/env to highlight the saved flag
           selectedKey = key;
           selectedEnv = env;
-          setStatus('Flag saved. Waiting for SSE refresh (etag ' + etag + ').', 'success');
+          hideErrorBanner();
+          setStatus('Flag saved successfully!', 'success');
+          showToast('Flag saved successfully!', 'success');
         } catch (err) {
           console.error('save error', err);
-          setStatus('Save failed: ' + err.message, 'error');
+          // Network error
+          showErrorBanner({
+            error: 'Network Error',
+            message: err.message || 'Could not connect to server. Please check your connection.',
+            code: 'NETWORK_ERROR'
+          }, 0);
+          setStatus('Save failed: Connection error.', 'error');
+        } finally {
+          setButtonLoading(saveBtn, false);
         }
       });
 
@@ -988,16 +1381,30 @@
 
       const deleteFlagBtn = document.getElementById('deleteFlagBtn');
       deleteFlagBtn.addEventListener('click', async () => {
+        hideErrorBanner();
+        clearFieldErrors();
+        
         const key = keyInput.value.trim();
         const env = envSelect.value.trim() || 'prod';
         const adminKey = adminKeyInput.value.trim();
 
+        // Client-side validation
+        const clientErrors = {};
         if (!key) {
-          setStatus('Key is required to delete a flag.', 'error');
-          return;
+          clientErrors.key = 'Key is required to delete a flag';
         }
         if (!adminKey) {
-          setStatus('Admin API key is required.', 'error');
+          clientErrors.adminKey = 'Admin API key is required';
+        }
+
+        if (Object.keys(clientErrors).length > 0) {
+          showErrorBanner({
+            error: 'Validation Error',
+            message: 'Please fix the errors below',
+            code: 'VALIDATION_ERROR',
+            fields: clientErrors
+          }, 400);
+          setStatus('Please fix validation errors.', 'error');
           return;
         }
 
@@ -1010,6 +1417,8 @@
 
         try {
           setStatus('Deleting flag…');
+          deleteFlagBtn.classList.add('btn-loading');
+          
           const url = new URL(API_BASE + '/v1/flags');
           url.searchParams.set('key', key);
           url.searchParams.set('env', env);
@@ -1026,23 +1435,36 @@
             json = await res.json();
           } catch (parseErr) {
             console.error('Failed to parse response JSON:', parseErr);
-            setStatus('Delete failed: Invalid JSON response from server.', 'error');
+            showErrorBanner({
+              error: 'Response Error',
+              message: 'Invalid JSON response from server',
+              code: 'PARSE_ERROR'
+            }, res.status);
+            setStatus('Delete failed: Invalid response.', 'error');
             return;
           }
 
           if (!res.ok || json.ok === false) {
-            const msg = json.message || 'HTTP ' + res.status;
-            setStatus('Delete failed: ' + msg, 'error');
+            handleApiError(res, json, 'Delete');
+            setStatus('Delete failed. See error above.', 'error');
             console.error('delete error', res.status, json);
             return;
           }
 
-          const etag = json.etag || '(no etag in response)';
-          setStatus('Flag deleted. Waiting for SSE refresh (etag ' + etag + ').', 'success');
+          hideErrorBanner();
+          setStatus('Flag deleted successfully!', 'success');
+          showToast('Flag deleted successfully!', 'success');
           clearForm();
         } catch (err) {
           console.error('delete error', err);
-          setStatus('Delete failed: ' + err.message, 'error');
+          showErrorBanner({
+            error: 'Network Error',
+            message: err.message || 'Could not connect to server. Please check your connection.',
+            code: 'NETWORK_ERROR'
+          }, 0);
+          setStatus('Delete failed: Connection error.', 'error');
+        } finally {
+          deleteFlagBtn.classList.remove('btn-loading');
         }
       });
 

@@ -14,6 +14,7 @@ import (
 	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/TimurManjosov/goflagship/internal/targeting"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
+	"github.com/TimurManjosov/goflagship/internal/validation"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -233,37 +234,10 @@ type upsertResponse struct {
 	ETag string `json:"etag"`
 }
 
-// validateVariants checks that variant weights sum to 100 and names are valid
-func validateVariants(variants []variantRequest) error {
-	if len(variants) == 0 {
-		return nil
-	}
-
-	totalWeight := 0
-	seenNames := make(map[string]bool)
-	for _, v := range variants {
-		if v.Name == "" {
-			return fmt.Errorf("variant name cannot be empty")
-		}
-		if seenNames[v.Name] {
-			return fmt.Errorf("duplicate variant name: %s", v.Name)
-		}
-		seenNames[v.Name] = true
-		if v.Weight < 0 || v.Weight > 100 {
-			return fmt.Errorf("variant weight must be between 0 and 100")
-		}
-		totalWeight += v.Weight
-	}
-	if totalWeight != 100 {
-		return fmt.Errorf("variant weights must sum to 100, got %d", totalWeight)
-	}
-	return nil
-}
-
 func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	var req upsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		BadRequestError(w, r, ErrCodeInvalidJSON, "Invalid JSON: "+err.Error())
 		return
 	}
 
@@ -273,26 +247,35 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		env = strings.TrimSpace(*req.Env)
 	}
 
-	// validation
-	if strings.TrimSpace(req.Key) == "" {
-		writeError(w, http.StatusBadRequest, "key is required")
-		return
+	// Convert variants for validation
+	var variantParams []validation.VariantValidationParams
+	for _, v := range req.Variants {
+		variantParams = append(variantParams, validation.VariantValidationParams{
+			Name:   v.Name,
+			Weight: v.Weight,
+		})
 	}
-	if req.Rollout < 0 || req.Rollout > 100 {
-		writeError(w, http.StatusBadRequest, "rollout must be 0..100")
+
+	// Validate all fields using the validation package
+	validationResult := validation.ValidateFlag(validation.FlagValidationParams{
+		Key:         req.Key,
+		Env:         env,
+		Description: req.Description,
+		Rollout:     req.Rollout,
+		Variants:    variantParams,
+	})
+
+	if !validationResult.Valid {
+		ValidationError(w, r, "Validation failed for one or more fields", validationResult.Errors)
 		return
 	}
 
-	// Validate variants if provided
-	if err := validateVariants(req.Variants); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Validate expression if provided
+	// Validate expression if provided (expression validation is separate)
 	if req.Expression != nil && *req.Expression != "" {
 		if err := targeting.ValidateExpression(*req.Expression); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid expression: "+err.Error())
+			BadRequestErrorWithFields(w, r, ErrCodeInvalidExpression, "Invalid expression", map[string]string{
+				"expression": err.Error(),
+			})
 			return
 		}
 	}
@@ -322,13 +305,13 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		Env:         env,
 	}
 	if err := s.store.UpsertFlag(r.Context(), params); err != nil {
-		writeError(w, http.StatusInternalServerError, "store upsert failed")
+		InternalError(w, r, "Failed to save flag")
 		return
 	}
 
 	// rebuild in-memory snapshot (read fresh rows for env)
 	if err := s.RebuildSnapshot(r.Context(), env); err != nil {
-		writeError(w, http.StatusInternalServerError, "snapshot rebuild failed")
+		InternalError(w, r, "Failed to rebuild snapshot")
 		return
 	}
 
@@ -347,25 +330,28 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(r.URL.Query().Get("key"))
 	env := strings.TrimSpace(r.URL.Query().Get("env"))
 
-	// Validate required parameters
+	// Validate required parameters with field-level errors
+	errors := make(map[string]string)
 	if key == "" {
-		writeError(w, http.StatusBadRequest, "key query parameter is required")
-		return
+		errors["key"] = "Key query parameter is required"
 	}
 	if env == "" {
-		writeError(w, http.StatusBadRequest, "env query parameter is required")
+		errors["env"] = "Env query parameter is required"
+	}
+	if len(errors) > 0 {
+		ValidationError(w, r, "Missing required parameters", errors)
 		return
 	}
 
 	// Delete from store
 	if err := s.store.DeleteFlag(r.Context(), key, env); err != nil {
-		writeError(w, http.StatusInternalServerError, "store delete failed")
+		InternalError(w, r, "Failed to delete flag")
 		return
 	}
 
 	// Rebuild snapshot
 	if err := s.RebuildSnapshot(r.Context(), env); err != nil {
-		writeError(w, http.StatusInternalServerError, "snapshot rebuild failed")
+		InternalError(w, r, "Failed to rebuild snapshot")
 		return
 	}
 
@@ -398,12 +384,12 @@ func (s *Server) authAdmin(next http.HandlerFunc) http.HandlerFunc {
 		got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
 		got = strings.TrimSpace(strings.TrimPrefix(got, "Bearer"))
 		if got == "" {
-			writeError(w, http.StatusUnauthorized, "missing bearer token")
+			UnauthorizedError(w, r, "Missing bearer token")
 			return
 		}
 		// constant-time compare
 		if subtle.ConstantTimeCompare([]byte(got), []byte(s.adminAPIKey)) != 1 {
-			writeError(w, http.StatusForbidden, "invalid token")
+			ForbiddenError(w, r, "Invalid token")
 			return
 		}
 		next.ServeHTTP(w, r)
