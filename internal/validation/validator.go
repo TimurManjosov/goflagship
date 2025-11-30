@@ -195,7 +195,7 @@ func ValidateConfigJSON(configStr string) (*ValidationResult, map[string]any) {
 
 	var config map[string]any
 	if err := json.Unmarshal([]byte(configStr), &config); err != nil {
-		result.AddError("config", "Config must be valid JSON: "+err.Error())
+		result.AddError("config", "Config must be a valid JSON object")
 		return result, nil
 	}
 
@@ -212,39 +212,47 @@ func ValidateVariants(variants []VariantValidationParams) *ValidationResult {
 
 	totalWeight := 0
 	seenNames := make(map[string]bool)
+	hasValidationError := false
 
-	for i, v := range variants {
+	for _, v := range variants {
 		// Validate name
 		if strings.TrimSpace(v.Name) == "" {
-			result.AddError("variants", "Variant name cannot be empty")
+			if !hasValidationError {
+				result.AddError("variants", "Variant name cannot be empty")
+				hasValidationError = true
+			}
 			continue
 		}
 
 		if utf8.RuneCountInString(v.Name) > MaxVariantNameLength {
-			result.AddError("variants", "Variant name must not exceed 64 characters")
+			if !hasValidationError {
+				result.AddError("variants", "Variant name must not exceed 64 characters")
+				hasValidationError = true
+			}
 			continue
 		}
 
 		if seenNames[v.Name] {
-			result.AddError("variants", "Duplicate variant name: "+v.Name)
+			if !hasValidationError {
+				result.AddError("variants", "Duplicate variant name: "+v.Name)
+				hasValidationError = true
+			}
 			continue
 		}
 		seenNames[v.Name] = true
 
 		// Validate weight
 		if v.Weight < 0 || v.Weight > 100 {
-			result.AddError("variants", "Variant weight must be between 0 and 100")
+			if !hasValidationError {
+				result.AddError("variants", "Variant weight must be between 0 and 100")
+				hasValidationError = true
+			}
 		}
 
 		totalWeight += v.Weight
-
-		// Prevent any other validation errors for same field
-		if !result.Valid && i > 0 {
-			break
-		}
 	}
 
-	if result.Valid && totalWeight != 100 {
+	if !hasValidationError && totalWeight != 100 {
 		result.AddError("variants", "Variant weights must sum to 100")
 	}
 

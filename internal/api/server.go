@@ -234,33 +234,6 @@ type upsertResponse struct {
 	ETag string `json:"etag"`
 }
 
-// validateVariants checks that variant weights sum to 100 and names are valid
-func validateVariants(variants []variantRequest) error {
-	if len(variants) == 0 {
-		return nil
-	}
-
-	totalWeight := 0
-	seenNames := make(map[string]bool)
-	for _, v := range variants {
-		if v.Name == "" {
-			return fmt.Errorf("variant name cannot be empty")
-		}
-		if seenNames[v.Name] {
-			return fmt.Errorf("duplicate variant name: %s", v.Name)
-		}
-		seenNames[v.Name] = true
-		if v.Weight < 0 || v.Weight > 100 {
-			return fmt.Errorf("variant weight must be between 0 and 100")
-		}
-		totalWeight += v.Weight
-	}
-	if totalWeight != 100 {
-		return fmt.Errorf("variant weights must sum to 100, got %d", totalWeight)
-	}
-	return nil
-}
-
 func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	var req upsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -411,12 +384,12 @@ func (s *Server) authAdmin(next http.HandlerFunc) http.HandlerFunc {
 		got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
 		got = strings.TrimSpace(strings.TrimPrefix(got, "Bearer"))
 		if got == "" {
-			writeError(w, http.StatusUnauthorized, "missing bearer token")
+			UnauthorizedError(w, r, "Missing bearer token")
 			return
 		}
 		// constant-time compare
 		if subtle.ConstantTimeCompare([]byte(got), []byte(s.adminAPIKey)) != 1 {
-			writeError(w, http.StatusForbidden, "invalid token")
+			ForbiddenError(w, r, "Invalid token")
 			return
 		}
 		next.ServeHTTP(w, r)
