@@ -53,23 +53,22 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req createKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if err.Error() == "http: request body too large" {
-			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			RequestTooLargeError(w, r, "Request body too large")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid JSON: expected fields 'name', 'role', and optional 'expires_at'")
+		BadRequestError(w, r, ErrCodeInvalidJSON, "Invalid JSON: expected fields 'name', 'role', and optional 'expires_at'")
 		return
 	}
 
-	// Validate required fields
+	// Validate all fields at once
+	validationErrors := make(map[string]string)
+
 	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
+		validationErrors["name"] = "Name is required"
 	}
 
-	// Validate role
 	if !auth.ValidateRole(req.Role) {
-		writeError(w, http.StatusBadRequest, "invalid role: must be readonly, admin, or superadmin")
-		return
+		validationErrors["role"] = "Role must be readonly, admin, or superadmin"
 	}
 
 	// Parse expires_at if provided
@@ -77,23 +76,29 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid expires_at format: use ISO 8601")
-			return
+			validationErrors["expires_at"] = "Invalid format: use ISO 8601 (e.g., 2024-12-31T23:59:59Z)"
+		} else {
+			expiresAt = pgtype.Timestamptz{Time: t, Valid: true}
 		}
-		expiresAt = pgtype.Timestamptz{Time: t, Valid: true}
+	}
+
+	// Return all validation errors at once
+	if len(validationErrors) > 0 {
+		ValidationError(w, r, "Validation failed for one or more fields", validationErrors)
+		return
 	}
 
 	// Generate new API key
 	key, err := auth.GenerateAPIKey()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate key")
+		InternalError(w, r, "Failed to generate key")
 		return
 	}
 
 	// Hash the key
 	keyHash, err := auth.HashAPIKey(key)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to hash key")
+		InternalError(w, r, "Failed to hash key")
 		return
 	}
 
@@ -106,7 +111,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	// Create the key in database
 	pgStore, ok := s.store.(PostgresStoreInterface)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "unsupported store type")
+		InternalError(w, r, "Database store not available")
 		return
 	}
 
@@ -119,7 +124,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		CreatedBy: createdBy,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create key")
+		InternalError(w, r, "Failed to create key")
 		return
 	}
 
@@ -146,13 +151,13 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	pgStore, ok := s.store.(PostgresStoreInterface)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "unsupported store type")
+		InternalError(w, r, "Database store not available")
 		return
 	}
 
 	keys, err := pgStore.ListAPIKeys(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list keys")
+		InternalError(w, r, "Failed to list keys")
 		return
 	}
 
@@ -187,24 +192,28 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	keyID := chi.URLParam(r, "id")
 	if keyID == "" {
-		writeError(w, http.StatusBadRequest, "key id is required")
+		BadRequestErrorWithFields(w, r, ErrCodeMissingField, "Missing required parameter", map[string]string{
+			"id": "Key ID is required",
+		})
 		return
 	}
 
 	uuid, err := parseUUID(keyID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid key id format")
+		BadRequestErrorWithFields(w, r, ErrCodeValidation, "Invalid key ID format", map[string]string{
+			"id": "Key ID must be a valid UUID format",
+		})
 		return
 	}
 
 	pgStore, ok := s.store.(PostgresStoreInterface)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "unsupported store type")
+		InternalError(w, r, "Database store not available")
 		return
 	}
 
 	if err := pgStore.RevokeAPIKey(r.Context(), uuid); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to revoke key")
+		InternalError(w, r, "Failed to revoke key")
 		return
 	}
 
@@ -260,19 +269,19 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	pgStore, ok := s.store.(PostgresStoreInterface)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "unsupported store type")
+		InternalError(w, r, "Database store not available")
 		return
 	}
 
 	logs, err := pgStore.ListAuditLogs(r.Context(), limit, offset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to list audit logs")
+		InternalError(w, r, "Failed to list audit logs")
 		return
 	}
 
 	totalCount, err := pgStore.CountAuditLogs(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to count audit logs")
+		InternalError(w, r, "Failed to count audit logs")
 		return
 	}
 

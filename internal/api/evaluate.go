@@ -34,19 +34,20 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 	var req evaluateRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		BadRequestError(w, r, ErrCodeInvalidJSON, "Invalid JSON: "+err.Error())
 		return
 	}
 
-	// Validate user is provided
+	// Validate with field-level errors
+	errors := make(map[string]string)
 	if req.User == nil {
-		writeError(w, http.StatusBadRequest, "user is required")
-		return
+		errors["user"] = "User is required"
+	} else if strings.TrimSpace(req.User.ID) == "" {
+		errors["user.id"] = "User ID is required"
 	}
 
-	// Validate user ID is provided
-	if strings.TrimSpace(req.User.ID) == "" {
-		writeError(w, http.StatusBadRequest, "user.id is required")
+	if len(errors) > 0 {
+		ValidationError(w, r, "Validation failed for one or more fields", errors)
 		return
 	}
 
@@ -79,7 +80,9 @@ func (s *Server) handleEvaluateGET(w http.ResponseWriter, r *http.Request) {
 	// Get userId (required)
 	userID := strings.TrimSpace(query.Get("userId"))
 	if userID == "" {
-		writeError(w, http.StatusBadRequest, "userId query parameter is required")
+		BadRequestErrorWithFields(w, r, ErrCodeMissingField, "Missing required parameter", map[string]string{
+			"userId": "userId query parameter is required",
+		})
 		return
 	}
 
