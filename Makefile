@@ -1,4 +1,4 @@
-.PHONY: test test-race test-cover test-verbose clean build run
+.PHONY: test test-race test-cover test-verbose clean build run build-cli
 
 # Run all tests
 test:
@@ -22,10 +22,18 @@ test-verbose:
 clean:
 	go clean -testcache
 	rm -f coverage.out coverage.html
+	rm -f bin/server bin/flagship
 
 # Build the server
 build:
 	go build -o bin/server ./cmd/server
+
+# Build the CLI tool
+build-cli:
+	go build -o bin/flagship ./cmd/flagship
+
+# Build everything
+build-all: build build-cli
 
 # Run the server
 run:
