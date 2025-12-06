@@ -50,7 +50,8 @@ func PrintFlag(flag *store.Flag, format OutputFormat) error {
 func printJSON(data interface{}) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	// Wrap slices of store.Flag in a "flags" key for consistency with documentation
+	// Wrap slices of store.Flag in a "flags" key for consistency with documentation.
+	// This function is specifically designed for flag output formatting.
 	if flags, ok := data.([]store.Flag); ok {
 		return encoder.Encode(map[string][]store.Flag{"flags": flags})
 	}

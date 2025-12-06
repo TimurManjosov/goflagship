@@ -89,7 +89,7 @@ func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, string, 
 	if baseURLFlag != "" && apiKeyFlag != "" {
 		// When using direct flags, env must be specified
 		if envName == "" {
-			return nil, "", fmt.Errorf("--env flag is required when using --base-url and --api-key")
+			return nil, "", fmt.Errorf("--env flag is required when using --base-url and --api-key flags")
 		}
 		return &EnvConfig{
 			BaseURL: baseURLFlag,
@@ -103,7 +103,7 @@ func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, string, 
 	if envBaseURL != "" && envAPIKey != "" {
 		// When using env vars, env must be specified
 		if envName == "" {
-			return nil, "", fmt.Errorf("--env flag or FLAGSHIP_ENV is required when using environment variables")
+			return nil, "", fmt.Errorf("--env flag is required when using FLAGSHIP_BASE_URL and FLAGSHIP_API_KEY environment variables")
 		}
 		return &EnvConfig{
 			BaseURL: envBaseURL,
