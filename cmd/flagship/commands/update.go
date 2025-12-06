@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	updateEnabled     *bool
-	updateRollout     *int32
+	updateEnabled     bool
+	updateRollout     int32
 	updateConfig      string
 	updateDescription string
 )
@@ -60,16 +60,16 @@ Examples:
 		}
 
 		// Update with new values if provided
-		if updateEnabled != nil {
-			params.Enabled = *updateEnabled
+		if cmd.Flags().Changed("enabled") {
+			params.Enabled = updateEnabled
 		}
-		if updateRollout != nil {
-			params.Rollout = *updateRollout
+		if cmd.Flags().Changed("rollout") {
+			params.Rollout = updateRollout
 		}
-		if updateDescription != "" {
+		if cmd.Flags().Changed("description") {
 			params.Description = updateDescription
 		}
-		if updateConfig != "" {
+		if cmd.Flags().Changed("config") {
 			var config map[string]any
 			if err := json.Unmarshal([]byte(updateConfig), &config); err != nil {
 				return fmt.Errorf("invalid config JSON: %w", err)
@@ -93,16 +93,8 @@ Examples:
 func init() {
 	rootCmd.AddCommand(updateCmd)
 
-	// Use pointers to distinguish between "not set" and "set to false/0"
-	updateCmd.Flags().BoolVar(new(bool), "enabled", false, "Enable/disable the flag")
-	updateCmd.Flags().Int32Var(new(int32), "rollout", 0, "Rollout percentage (0-100)")
+	updateCmd.Flags().BoolVar(&updateEnabled, "enabled", false, "Enable/disable the flag")
+	updateCmd.Flags().Int32Var(&updateRollout, "rollout", 0, "Rollout percentage (0-100)")
 	updateCmd.Flags().StringVar(&updateConfig, "config", "", "Flag configuration as JSON")
 	updateCmd.Flags().StringVar(&updateDescription, "description", "", "Flag description")
-
-	// Bind the pointers
-	updateEnabled = new(bool)
-	updateRollout = new(int32)
-	
-	// Mark flags as changed only if explicitly set
-	updateCmd.Flags().Lookup("enabled").NoOptDefVal = "true"
 }

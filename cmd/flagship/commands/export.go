@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -64,10 +65,10 @@ Examples:
 		// Export based on format
 		switch format {
 		case "json":
-			encoder := yaml.NewEncoder(output)
-			defer encoder.Close()
+			encoder := json.NewEncoder(output)
+			encoder.SetIndent("", "  ")
 			if err := encoder.Encode(exportData); err != nil {
-				return fmt.Errorf("failed to encode YAML: %w", err)
+				return fmt.Errorf("failed to encode JSON: %w", err)
 			}
 		case "yaml", "table":
 			// Default to YAML for export
