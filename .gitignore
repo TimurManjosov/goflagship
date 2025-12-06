@@ -14,5 +14,5 @@ sdk/dist-temp/
 
 # Environment / misc
 .env
-server
-flagship
+/server
+/flagship
