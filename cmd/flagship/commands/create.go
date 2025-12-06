@@ -31,7 +31,7 @@ Examples:
 		key := args[0]
 
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
@@ -54,7 +54,7 @@ Examples:
 			Enabled:     createEnabled,
 			Rollout:     createRollout,
 			Config:      config,
-			Env:         env,
+			Env:         effectiveEnv,
 		}
 
 		ctx := context.Background()
@@ -63,7 +63,7 @@ Examples:
 		}
 
 		if !quiet {
-			fmt.Printf("Successfully created flag '%s' in environment '%s'\n", key, env)
+			fmt.Printf("Successfully created flag '%s' in environment '%s'\n", key, effectiveEnv)
 		}
 
 		return nil

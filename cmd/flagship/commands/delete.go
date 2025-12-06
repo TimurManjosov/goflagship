@@ -29,14 +29,14 @@ Examples:
 		key := args[0]
 
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
 
 		// Confirm deletion unless --force
 		if !deleteForce && !quiet {
-			fmt.Printf("Are you sure you want to delete flag '%s' from environment '%s'? (y/N): ", key, env)
+			fmt.Printf("Are you sure you want to delete flag '%s' from environment '%s'? (y/N): ", key, effectiveEnv)
 			reader := bufio.NewReader(os.Stdin)
 			response, err := reader.ReadString('\n')
 			if err != nil {
@@ -54,12 +54,12 @@ Examples:
 
 		// Delete flag
 		ctx := context.Background()
-		if err := c.DeleteFlag(ctx, key, env); err != nil {
+		if err := c.DeleteFlag(ctx, key, effectiveEnv); err != nil {
 			return fmt.Errorf("failed to delete flag: %w", err)
 		}
 
 		if !quiet {
-			fmt.Printf("Successfully deleted flag '%s' from environment '%s'\n", key, env)
+			fmt.Printf("Successfully deleted flag '%s' from environment '%s'\n", key, effectiveEnv)
 		}
 
 		return nil

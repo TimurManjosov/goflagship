@@ -22,7 +22,7 @@ Examples:
 		key := args[0]
 
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
@@ -32,7 +32,7 @@ Examples:
 
 		// Get flag
 		ctx := context.Background()
-		flag, err := c.GetFlag(ctx, key, env)
+		flag, err := c.GetFlag(ctx, key, effectiveEnv)
 		if err != nil {
 			return fmt.Errorf("failed to get flag: %w", err)
 		}

@@ -25,7 +25,7 @@ Examples:
   flagship list --env prod --enabled-only`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
@@ -35,7 +35,7 @@ Examples:
 
 		// List flags
 		ctx := context.Background()
-		flags, err := c.ListFlags(ctx, env)
+		flags, err := c.ListFlags(ctx, effectiveEnv)
 		if err != nil {
 			return fmt.Errorf("failed to list flags: %w", err)
 		}

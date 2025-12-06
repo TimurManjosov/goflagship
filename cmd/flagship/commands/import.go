@@ -62,7 +62,7 @@ Examples:
 		}
 
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
@@ -78,8 +78,8 @@ Examples:
 		for _, flag := range importData.Flags {
 			// Use the environment from the flag or override with --env flag
 			targetEnv := flag.Env
-			if env != "" {
-				targetEnv = env
+			if effectiveEnv != "" {
+				targetEnv = effectiveEnv
 			}
 
 			params := store.UpsertParams{

@@ -83,29 +83,38 @@ func SaveConfig(cfg *Config) error {
 
 // GetEnvConfig returns configuration for a specific environment
 // Priority: command flags > environment variables > config file
-func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, error) {
+// Returns the environment config and the effective environment name
+func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, string, error) {
 	// First check command line flags
 	if baseURLFlag != "" && apiKeyFlag != "" {
+		// When using direct flags, env must be specified
+		if envName == "" {
+			return nil, "", fmt.Errorf("--env flag is required when using --base-url and --api-key")
+		}
 		return &EnvConfig{
 			BaseURL: baseURLFlag,
 			APIKey:  apiKeyFlag,
-		}, nil
+		}, envName, nil
 	}
 
 	// Then check environment variables
 	envBaseURL := os.Getenv("FLAGSHIP_BASE_URL")
 	envAPIKey := os.Getenv("FLAGSHIP_API_KEY")
 	if envBaseURL != "" && envAPIKey != "" {
+		// When using env vars, env must be specified
+		if envName == "" {
+			return nil, "", fmt.Errorf("--env flag or FLAGSHIP_ENV is required when using environment variables")
+		}
 		return &EnvConfig{
 			BaseURL: envBaseURL,
 			APIKey:  envAPIKey,
-		}, nil
+		}, envName, nil
 	}
 
 	// Finally check config file
 	cfg, err := LoadConfig()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Use default env if not specified
@@ -115,7 +124,7 @@ func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, error) {
 
 	envCfg, ok := cfg.Environments[envName]
 	if !ok {
-		return nil, fmt.Errorf("environment '%s' not found in config", envName)
+		return nil, "", fmt.Errorf("environment '%s' not found in config", envName)
 	}
 
 	// Override with flags/env vars if provided
@@ -132,10 +141,10 @@ func GetEnvConfig(envName, baseURLFlag, apiKeyFlag string) (*EnvConfig, error) {
 	}
 
 	if envCfg.BaseURL == "" || envCfg.APIKey == "" {
-		return nil, fmt.Errorf("base_url and api_key must be configured for environment '%s'", envName)
+		return nil, "", fmt.Errorf("base_url and api_key must be configured for environment '%s'", envName)
 	}
 
-	return &envCfg, nil
+	return &envCfg, envName, nil
 }
 
 // InitConfig creates a default config file

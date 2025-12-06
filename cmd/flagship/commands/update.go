@@ -32,7 +32,7 @@ Examples:
 		key := args[0]
 
 		// Get environment configuration
-		envCfg, err := cli.GetEnvConfig(env, baseURL, apiKey)
+		envCfg, effectiveEnv, err := cli.GetEnvConfig(env, baseURL, apiKey)
 		if err != nil {
 			return fmt.Errorf("configuration error: %w", err)
 		}
@@ -42,7 +42,7 @@ Examples:
 
 		// First, get the existing flag to preserve values
 		ctx := context.Background()
-		existingFlag, err := c.GetFlag(ctx, key, env)
+		existingFlag, err := c.GetFlag(ctx, key, effectiveEnv)
 		if err != nil {
 			return fmt.Errorf("failed to get existing flag: %w", err)
 		}
@@ -56,7 +56,7 @@ Examples:
 			Config:      existingFlag.Config,
 			Variants:    existingFlag.Variants,
 			Expression:  existingFlag.Expression,
-			Env:         env,
+			Env:         effectiveEnv,
 		}
 
 		// Update with new values if provided
@@ -83,7 +83,7 @@ Examples:
 		}
 
 		if !quiet {
-			fmt.Printf("Successfully updated flag '%s' in environment '%s'\n", key, env)
+			fmt.Printf("Successfully updated flag '%s' in environment '%s'\n", key, effectiveEnv)
 		}
 
 		return nil
