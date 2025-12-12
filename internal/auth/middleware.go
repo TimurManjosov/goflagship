@@ -54,7 +54,7 @@ func NewAuthenticator(keyStore KeyStore, legacyAdminKey string) *Authenticator {
 // lastUsedWorker processes last_used_at updates in the background
 func (a *Authenticator) lastUsedWorker() {
 	for update := range a.updateChan {
-		// Skip if keyStore is nil (e.g., in test scenarios)
+		// Skip if keyStore is nil
 		if a.keyStore == nil {
 			continue
 		}
