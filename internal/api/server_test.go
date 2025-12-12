@@ -365,7 +365,7 @@ func TestUpsertFlag_Unauthorized(t *testing.T) {
 	}
 }
 
-func TestUpsertFlag_Forbidden(t *testing.T) {
+func TestUpsertFlag_InvalidToken(t *testing.T) {
 	st := store.NewMemoryStore()
 	srv := NewServer(st, "prod", "admin-key")
 	handler := srv.Router()
@@ -378,8 +378,8 @@ func TestUpsertFlag_Forbidden(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("Expected status 403, got %d", rr.Code)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", rr.Code)
 	}
 }
 
