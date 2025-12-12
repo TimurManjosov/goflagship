@@ -96,6 +96,13 @@ func (a *Authenticator) Authenticate(ctx context.Context, authHeader string) Aut
 	// - Cache keys for 5-10 minutes with periodic refresh
 	// - Invalidate cache on key creation/revocation
 	// - Use a mutex or RWMutex for thread-safe cache access
+	if a.keyStore == nil {
+		return AuthResult{
+			Authenticated: false,
+			Error:         "invalid token",
+		}
+	}
+
 	keys, err := a.keyStore.ListAPIKeys(ctx)
 	if err != nil {
 		return AuthResult{
