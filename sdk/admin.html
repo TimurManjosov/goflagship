@@ -232,6 +232,187 @@
         border-bottom-color: var(--accent);
       }
 
+      /* Main navigation tabs */
+      .main-nav {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .main-nav-tab {
+        padding: 8px 20px;
+        font-size: 14px;
+        background: transparent;
+        color: var(--text-soft);
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: inherit;
+        font-weight: 500;
+      }
+
+      .main-nav-tab:hover {
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .main-nav-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      .view-content {
+        display: none;
+      }
+
+      .view-content.active {
+        display: block;
+      }
+
+      /* Audit log styles */
+      .audit-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .audit-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .audit-filters {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .audit-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .audit-entry {
+        border-radius: 12px;
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.98));
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        padding: 14px 16px;
+        transition: var(--transition);
+      }
+
+      .audit-entry:hover {
+        background: rgba(15, 23, 42, 0.9);
+        border-color: rgba(56, 189, 248, 0.3);
+      }
+
+      .audit-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .audit-entry-time {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .audit-entry-action {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin-top: 2px;
+      }
+
+      .audit-entry-resource {
+        font-size: 12px;
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        margin-top: 2px;
+      }
+
+      .audit-entry-status {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+      }
+
+      .audit-entry-status.success {
+        background: rgba(22, 163, 74, 0.16);
+        color: #bbf7d0;
+        border: 1px solid rgba(34, 197, 94, 0.45);
+      }
+
+      .audit-entry-status.error {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      .audit-entry-details {
+        font-size: 12px;
+        color: var(--text-soft);
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(31, 41, 55, 0.5);
+      }
+
+      .audit-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .audit-pagination button {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+
+      .audit-pagination span {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .export-btn {
+        padding: 6px 14px;
+        font-size: 12px;
+        background: rgba(15, 23, 42, 0.95);
+        color: var(--text);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .export-btn:hover {
+        background: rgba(17, 24, 39, 0.96);
+        border-color: var(--accent);
+      }
+
+      .loading-spinner-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+      }
+
+      .loading-spinner-large {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(56, 189, 248, 0.3);
+        border-radius: 50%;
+        border-top-color: var(--accent);
+        animation: spin 0.8s linear infinite;
+      }
+
       .etag {
         font-size: 11px;
         color: var(--text-soft);
@@ -792,6 +973,19 @@
           </div>
         </header>
 
+        <!-- Main Navigation -->
+        <div class="main-nav">
+          <button type="button" class="main-nav-tab active" id="navTabFlags">
+            Flags
+          </button>
+          <button type="button" class="main-nav-tab" id="navTabAudit">
+            Audit Log
+          </button>
+        </div>
+
+        <!-- Flags View -->
+        <div class="view-content active" id="viewFlags">
+
         <div class="top-row">
           <div class="etag" id="etagDisplay">
             <span class="etag-label">ETag:</span>
@@ -874,6 +1068,55 @@
             </tbody>
           </table>
         </div>
+      </div>
+      <!-- End Flags View -->
+
+      <!-- Audit View -->
+      <div class="view-content" id="viewAudit">
+        <div class="audit-header">
+          <div class="audit-title">Audit Log</div>
+          <button type="button" class="export-btn" id="exportAuditBtn">
+            📥 Export CSV
+          </button>
+        </div>
+
+        <div class="audit-filters">
+          <select id="auditActionFilter" class="filter-select">
+            <option value="">Action: All</option>
+            <option value="upsert_flag">Create/Update Flag</option>
+            <option value="delete_flag">Delete Flag</option>
+            <option value="create_api_key">Create API Key</option>
+            <option value="revoke_api_key">Revoke API Key</option>
+          </select>
+          <input
+            type="text"
+            id="auditResourceFilter"
+            class="search-input"
+            placeholder="Filter by resource (e.g., flags/prod/my_flag)"
+            style="max-width: 300px;"
+          />
+          <button type="button" id="clearAuditFiltersBtn" class="clear-filters-btn">
+            Clear filters
+          </button>
+        </div>
+
+        <div id="auditTimeline" class="audit-timeline">
+          <div class="loading-spinner-container">
+            <div class="loading-spinner-large"></div>
+          </div>
+        </div>
+
+        <div class="audit-pagination" id="auditPagination">
+          <button type="button" class="btn-secondary" id="auditPrevBtn" disabled>
+            Previous
+          </button>
+          <span id="auditPageInfo">Page 1</span>
+          <button type="button" class="btn-secondary" id="auditNextBtn">
+            Next
+          </button>
+        </div>
+      </div>
+      <!-- End Audit View -->
       </div>
 
       <!-- RIGHT: Editor -->
@@ -1059,6 +1302,30 @@
       const envTabStaging = document.getElementById('envTabStaging');
       const envTabDev = document.getElementById('envTabDev');
       const envTabs = [envTabProd, envTabStaging, envTabDev];
+
+      // Get main navigation elements
+      const navTabFlags = document.getElementById('navTabFlags');
+      const navTabAudit = document.getElementById('navTabAudit');
+      const viewFlags = document.getElementById('viewFlags');
+      const viewAudit = document.getElementById('viewAudit');
+
+      // Audit log state
+      let auditLogs = [];
+      let auditCurrentPage = 1;
+      let auditLimit = 20;
+      let auditTotalCount = 0;
+      let auditActionFilter = '';
+      let auditResourceFilter = '';
+
+      // Get audit elements
+      const auditTimeline = document.getElementById('auditTimeline');
+      const auditPrevBtn = document.getElementById('auditPrevBtn');
+      const auditNextBtn = document.getElementById('auditNextBtn');
+      const auditPageInfo = document.getElementById('auditPageInfo');
+      const auditActionFilterSelect = document.getElementById('auditActionFilter');
+      const auditResourceFilterInput = document.getElementById('auditResourceFilter');
+      const clearAuditFiltersBtn = document.getElementById('clearAuditFiltersBtn');
+      const exportAuditBtn = document.getElementById('exportAuditBtn');
 
       function setStatus(message, kind = 'info') {
         formStatus.textContent = message;
@@ -1373,6 +1640,163 @@
         window.location.hash = `env=${env}`;
         updateEnvTabs();
         renderSnapshot();
+      }
+
+      // Fetch audit logs
+      async function fetchAuditLogs() {
+        try {
+          const offset = (auditCurrentPage - 1) * auditLimit;
+          const url = new URL(API_BASE + '/v1/admin/audit-logs');
+          url.searchParams.set('limit', auditLimit);
+          url.searchParams.set('offset', offset);
+
+          auditTimeline.innerHTML = `
+            <div class="loading-spinner-container">
+              <div class="loading-spinner-large"></div>
+            </div>`;
+
+          const adminKey = adminKeyInput.value.trim() || 'admin-123';
+          const res = await fetch(url.toString(), {
+            headers: {
+              Authorization: 'Bearer ' + adminKey,
+            },
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to fetch audit logs: ' + res.status);
+          }
+
+          const data = await res.json();
+          auditLogs = data.logs || [];
+          auditTotalCount = data.total_count || 0;
+
+          renderAuditLogs();
+          updateAuditPagination();
+        } catch (err) {
+          console.error('audit logs error', err);
+          auditTimeline.innerHTML = `
+            <div class="empty-state">
+              Failed to load audit logs: ${err.message}
+            </div>`;
+        }
+      }
+
+      // Render audit logs
+      function renderAuditLogs() {
+        // Apply client-side filters
+        let filtered = auditLogs;
+
+        if (auditActionFilter) {
+          filtered = filtered.filter(log => log.action === auditActionFilter);
+        }
+
+        if (auditResourceFilter) {
+          const query = auditResourceFilter.toLowerCase();
+          filtered = filtered.filter(log => 
+            (log.resource || '').toLowerCase().includes(query)
+          );
+        }
+
+        if (filtered.length === 0) {
+          auditTimeline.innerHTML = `
+            <div class="empty-state">
+              No audit logs found. ${auditActionFilter || auditResourceFilter ? 'Try different filters.' : ''}
+            </div>`;
+          return;
+        }
+
+        auditTimeline.innerHTML = filtered.map(log => {
+          const date = new Date(log.timestamp);
+          const timeStr = date.toLocaleString();
+          const statusClass = log.status >= 200 && log.status < 300 ? 'success' : 'error';
+          const statusText = log.status >= 200 && log.status < 300 ? `HTTP ${log.status}` : `Error ${log.status}`;
+
+          let detailsHtml = '';
+          if (log.details && Object.keys(log.details).length > 0) {
+            detailsHtml = `
+              <div class="audit-entry-details">
+                ${Object.entries(log.details).map(([key, val]) => 
+                  `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(JSON.stringify(val))}</div>`
+                ).join('')}
+              </div>`;
+          }
+
+          return `
+            <div class="audit-entry">
+              <div class="audit-entry-header">
+                <div>
+                  <div class="audit-entry-time">${escapeHtml(timeStr)}</div>
+                  <div class="audit-entry-action">${escapeHtml(log.action)}</div>
+                  <div class="audit-entry-resource">${escapeHtml(log.resource)}</div>
+                </div>
+                <div class="audit-entry-status ${statusClass}">${statusText}</div>
+              </div>
+              ${detailsHtml}
+            </div>`;
+        }).join('');
+      }
+
+      // Update audit pagination
+      function updateAuditPagination() {
+        const totalPages = Math.ceil(auditTotalCount / auditLimit);
+        auditPageInfo.textContent = `Page ${auditCurrentPage} of ${totalPages || 1}`;
+        auditPrevBtn.disabled = auditCurrentPage === 1;
+        auditNextBtn.disabled = auditCurrentPage >= totalPages;
+      }
+
+      // Export audit logs to CSV
+      function exportAuditToCSV() {
+        if (auditLogs.length === 0) {
+          showToast('No audit logs to export', 'error');
+          return;
+        }
+
+        const headers = ['Timestamp', 'Action', 'Resource', 'Status', 'IP Address', 'User Agent'];
+        const rows = auditLogs.map(log => [
+          log.timestamp,
+          log.action,
+          log.resource,
+          log.status,
+          log.ip_address,
+          log.user_agent
+        ]);
+
+        const csv = [
+          headers.join(','),
+          ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('Audit logs exported successfully', 'success');
+      }
+
+      // Switch main view
+      function switchMainView(view) {
+        if (view === 'flags') {
+          navTabFlags.classList.add('active');
+          navTabAudit.classList.remove('active');
+          viewFlags.classList.add('active');
+          viewAudit.classList.remove('active');
+        } else if (view === 'audit') {
+          navTabFlags.classList.remove('active');
+          navTabAudit.classList.add('active');
+          viewFlags.classList.remove('active');
+          viewAudit.classList.add('active');
+          
+          // Load audit logs when switching to audit view
+          if (auditLogs.length === 0) {
+            fetchAuditLogs();
+          }
+        }
       }
 
       // Update result count
@@ -1834,6 +2258,49 @@
         updateEnvTabs();
         renderSnapshot();
       });
+
+      // Main navigation event listeners
+      navTabFlags.addEventListener('click', () => switchMainView('flags'));
+      navTabAudit.addEventListener('click', () => switchMainView('audit'));
+
+      // Audit pagination event listeners
+      auditPrevBtn.addEventListener('click', () => {
+        if (auditCurrentPage > 1) {
+          auditCurrentPage--;
+          fetchAuditLogs();
+        }
+      });
+
+      auditNextBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(auditTotalCount / auditLimit);
+        if (auditCurrentPage < totalPages) {
+          auditCurrentPage++;
+          fetchAuditLogs();
+        }
+      });
+
+      // Audit filter event listeners
+      auditActionFilterSelect.addEventListener('change', () => {
+        auditActionFilter = auditActionFilterSelect.value;
+        renderAuditLogs();
+      });
+
+      const debouncedAuditResourceFilter = debounce(() => {
+        auditResourceFilter = auditResourceFilterInput.value.trim();
+        renderAuditLogs();
+      }, 300);
+
+      auditResourceFilterInput.addEventListener('input', debouncedAuditResourceFilter);
+
+      clearAuditFiltersBtn.addEventListener('click', () => {
+        auditActionFilterSelect.value = '';
+        auditActionFilter = '';
+        auditResourceFilterInput.value = '';
+        auditResourceFilter = '';
+        renderAuditLogs();
+      });
+
+      exportAuditBtn.addEventListener('click', exportAuditToCSV);
 
       (async function init() {
         // Load selected environment from localStorage/hash
