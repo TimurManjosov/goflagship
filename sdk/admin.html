@@ -112,6 +112,94 @@
         margin-bottom: 8px;
       }
 
+      .search-filter-bar {
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .search-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .search-input {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        background: rgba(15, 23, 42, 0.96);
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: var(--transition);
+      }
+
+      .search-input:focus {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      }
+
+      .search-input::placeholder {
+        color: var(--text-soft);
+      }
+
+      .filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .filter-select {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        background: rgba(15, 23, 42, 0.96);
+        color: var(--text);
+        font-size: 12px;
+        font-family: inherit;
+        outline: none;
+        transition: var(--transition);
+        cursor: pointer;
+      }
+
+      .filter-select:focus {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      }
+
+      .result-count {
+        font-size: 12px;
+        color: var(--text-soft);
+        margin-left: auto;
+      }
+
+      .clear-filters-btn {
+        padding: 5px 12px;
+        font-size: 12px;
+        background: rgba(15, 23, 42, 0.95);
+        color: var(--text-soft);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 999px;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .clear-filters-btn:hover {
+        background: rgba(17, 24, 39, 0.96);
+        color: var(--text);
+      }
+
+      .highlight {
+        background-color: rgba(56, 189, 248, 0.3);
+        color: var(--text);
+        font-weight: 600;
+      }
+
       .etag {
         font-size: 11px;
         color: var(--text-soft);
@@ -683,6 +771,41 @@
           </div>
         </div>
 
+        <!-- Search & Filter Bar -->
+        <div class="search-filter-bar">
+          <div class="search-row">
+            <input
+              type="text"
+              id="searchInput"
+              class="search-input"
+              placeholder="🔍 Search flags by key or description..."
+              autocomplete="off"
+            />
+          </div>
+          <div class="filter-row">
+            <select id="statusFilter" class="filter-select">
+              <option value="">Status: All</option>
+              <option value="enabled">Status: Enabled</option>
+              <option value="disabled">Status: Disabled</option>
+            </select>
+            <select id="rolloutFilter" class="filter-select">
+              <option value="">Rollout: All</option>
+              <option value="full">Rollout: Full (100%)</option>
+              <option value="partial">Rollout: Partial (&lt;100%)</option>
+              <option value="off">Rollout: Off (0%)</option>
+            </select>
+            <select id="expressionFilter" class="filter-select">
+              <option value="">Expression: All</option>
+              <option value="with">With Expression</option>
+              <option value="without">Without Expression</option>
+            </select>
+            <button type="button" id="clearFiltersBtn" class="clear-filters-btn">
+              Clear filters
+            </button>
+            <span class="result-count" id="resultCount">Showing 0 flags</span>
+          </div>
+        </div>
+
         <div class="table-card">
           <table>
             <thead>
@@ -870,6 +993,20 @@
       let selectedKey = null;
       let selectedEnv = null;
       let es = null;
+
+      // Search and filter state
+      let searchQuery = '';
+      let statusFilter = '';
+      let rolloutFilter = '';
+      let expressionFilter = '';
+
+      // Get filter elements
+      const searchInput = document.getElementById('searchInput');
+      const statusFilterSelect = document.getElementById('statusFilter');
+      const rolloutFilterSelect = document.getElementById('rolloutFilter');
+      const expressionFilterSelect = document.getElementById('expressionFilter');
+      const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+      const resultCount = document.getElementById('resultCount');
 
       function setStatus(message, kind = 'info') {
         formStatus.textContent = message;
@@ -1095,10 +1232,68 @@
         return td;
       }
 
+      // Debounce helper
+      function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+          const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+          };
+          clearTimeout(timeout);
+          timeout = setTimeout(later, wait);
+        };
+      }
+
+      // Highlight matching text
+      function highlightText(text, query) {
+        if (!query) return text;
+        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<span class="highlight">$1</span>');
+      }
+
+      // Filter flags based on search and filter criteria
+      function filterFlags(flags) {
+        return flags.filter(flag => {
+          // Search filter (match key or description)
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            const keyMatch = (flag.key || '').toLowerCase().includes(query);
+            const descMatch = (flag.description || '').toLowerCase().includes(query);
+            if (!keyMatch && !descMatch) return false;
+          }
+
+          // Status filter
+          if (statusFilter === 'enabled' && !flag.enabled) return false;
+          if (statusFilter === 'disabled' && flag.enabled) return false;
+
+          // Rollout filter
+          if (rolloutFilter === 'full' && flag.rollout !== 100) return false;
+          if (rolloutFilter === 'partial' && (flag.rollout === 0 || flag.rollout === 100)) return false;
+          if (rolloutFilter === 'off' && flag.rollout !== 0) return false;
+
+          // Expression filter
+          if (expressionFilter === 'with' && !flag.expression) return false;
+          if (expressionFilter === 'without' && flag.expression) return false;
+
+          return true;
+        });
+      }
+
+      // Update result count
+      function updateResultCount(filtered, total) {
+        if (filtered === total) {
+          resultCount.textContent = `Showing ${total} flag${total !== 1 ? 's' : ''}`;
+        } else {
+          resultCount.textContent = `Showing ${filtered} of ${total} flag${total !== 1 ? 's' : ''}`;
+        }
+      }
+
       function renderSnapshot() {
         if (!currentSnapshot || !currentSnapshot.flags) {
           clearTable();
           etagValue.textContent = currentSnapshot?.etag || '—';
+          updateResultCount(0, 0);
           return;
         }
 
@@ -1108,20 +1303,47 @@
         if (flagsArray.length === 0) {
           clearTable();
           etagValue.textContent = currentSnapshot.etag || '—';
+          updateResultCount(0, 0);
+          return;
+        }
+
+        // Apply filters
+        const filteredFlags = filterFlags(flagsArray);
+
+        if (filteredFlags.length === 0) {
+          flagsBody.innerHTML = `
+            <tr>
+              <td colspan="5">
+                <div class="empty-state">
+                  No flags match your search or filters. Try different criteria.
+                </div>
+              </td>
+            </tr>`;
+          etagValue.textContent = currentSnapshot.etag || '—';
+          updateResultCount(0, flagsArray.length);
           return;
         }
 
         flagsBody.innerHTML = '';
         etagValue.textContent = currentSnapshot.etag || '—';
+        updateResultCount(filteredFlags.length, flagsArray.length);
 
-        flagsArray.forEach((f) => {
+        filteredFlags.forEach((f) => {
           const tr = document.createElement('tr');
           if (f.key === selectedKey && f.env === selectedEnv) {
             tr.classList.add('selected');
           }
 
-          // Create cells safely to avoid XSS
-          tr.appendChild(createPillCell(f.key, 'pill-text'));
+          // Create key cell with highlighting
+          const keyCell = document.createElement('td');
+          keyCell.className = 'pill-text';
+          if (searchQuery) {
+            keyCell.innerHTML = highlightText(f.key, searchQuery);
+          } else {
+            keyCell.textContent = f.key;
+          }
+          tr.appendChild(keyCell);
+
           tr.appendChild(createPillCell(f.env, 'pill pill-env'));
           tr.appendChild(
             createPillCell(
@@ -1466,6 +1688,41 @@
         } finally {
           deleteFlagBtn.classList.remove('btn-loading');
         }
+      });
+
+      // Search and filter event listeners
+      const debouncedSearch = debounce(() => {
+        searchQuery = searchInput.value.trim();
+        renderSnapshot();
+      }, 300);
+
+      searchInput.addEventListener('input', debouncedSearch);
+
+      statusFilterSelect.addEventListener('change', () => {
+        statusFilter = statusFilterSelect.value;
+        renderSnapshot();
+      });
+
+      rolloutFilterSelect.addEventListener('change', () => {
+        rolloutFilter = rolloutFilterSelect.value;
+        renderSnapshot();
+      });
+
+      expressionFilterSelect.addEventListener('change', () => {
+        expressionFilter = expressionFilterSelect.value;
+        renderSnapshot();
+      });
+
+      clearFiltersBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        statusFilterSelect.value = '';
+        statusFilter = '';
+        rolloutFilterSelect.value = '';
+        rolloutFilter = '';
+        expressionFilterSelect.value = '';
+        expressionFilter = '';
+        renderSnapshot();
       });
 
       (async function init() {
