@@ -200,6 +200,38 @@
         font-weight: 600;
       }
 
+      /* Environment tabs */
+      .env-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+      }
+
+      .env-tab {
+        padding: 6px 16px;
+        font-size: 13px;
+        background: transparent;
+        color: var(--text-soft);
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: inherit;
+        font-weight: 500;
+      }
+
+      .env-tab:hover {
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .env-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
       .etag {
         font-size: 11px;
         color: var(--text-soft);
@@ -771,6 +803,19 @@
           </div>
         </div>
 
+        <!-- Environment Tabs -->
+        <div class="env-tabs">
+          <button type="button" class="env-tab" data-env="prod" id="envTabProd">
+            Production
+          </button>
+          <button type="button" class="env-tab" data-env="staging" id="envTabStaging">
+            Staging
+          </button>
+          <button type="button" class="env-tab" data-env="dev" id="envTabDev">
+            Development
+          </button>
+        </div>
+
         <!-- Search & Filter Bar -->
         <div class="search-filter-bar">
           <div class="search-row">
@@ -999,6 +1044,7 @@
       let statusFilter = '';
       let rolloutFilter = '';
       let expressionFilter = '';
+      let selectedEnvironment = 'prod'; // Default environment
 
       // Get filter elements
       const searchInput = document.getElementById('searchInput');
@@ -1007,6 +1053,12 @@
       const expressionFilterSelect = document.getElementById('expressionFilter');
       const clearFiltersBtn = document.getElementById('clearFiltersBtn');
       const resultCount = document.getElementById('resultCount');
+
+      // Get environment tab elements
+      const envTabProd = document.getElementById('envTabProd');
+      const envTabStaging = document.getElementById('envTabStaging');
+      const envTabDev = document.getElementById('envTabDev');
+      const envTabs = [envTabProd, envTabStaging, envTabDev];
 
       function setStatus(message, kind = 'info') {
         formStatus.textContent = message;
@@ -1255,6 +1307,9 @@
       // Filter flags based on search and filter criteria
       function filterFlags(flags) {
         return flags.filter(flag => {
+          // Environment filter
+          if (flag.env !== selectedEnvironment) return false;
+
           // Search filter (match key or description)
           if (searchQuery) {
             const query = searchQuery.toLowerCase();
@@ -1278,6 +1333,46 @@
 
           return true;
         });
+      }
+
+      // Update environment tabs active state
+      function updateEnvTabs() {
+        envTabs.forEach(tab => {
+          const tabEnv = tab.getAttribute('data-env');
+          if (tabEnv === selectedEnvironment) {
+            tab.classList.add('active');
+          } else {
+            tab.classList.remove('active');
+          }
+        });
+      }
+
+      // Load environment from localStorage or URL hash
+      function loadSelectedEnvironment() {
+        // Try URL hash first (e.g., #env=staging)
+        const hash = window.location.hash;
+        if (hash.startsWith('#env=')) {
+          const envFromHash = hash.substring(5);
+          if (['prod', 'staging', 'dev'].includes(envFromHash)) {
+            selectedEnvironment = envFromHash;
+            return;
+          }
+        }
+
+        // Fall back to localStorage
+        const savedEnv = localStorage.getItem('selectedEnvironment');
+        if (savedEnv && ['prod', 'staging', 'dev'].includes(savedEnv)) {
+          selectedEnvironment = savedEnv;
+        }
+      }
+
+      // Save environment to localStorage and URL hash
+      function saveSelectedEnvironment(env) {
+        selectedEnvironment = env;
+        localStorage.setItem('selectedEnvironment', env);
+        window.location.hash = `env=${env}`;
+        updateEnvTabs();
+        renderSnapshot();
       }
 
       // Update result count
@@ -1387,7 +1482,7 @@
         selectedKey = null;
         selectedEnv = null;
         keyInput.value = '';
-        envSelect.value = 'prod';
+        envSelect.value = selectedEnvironment; // Use current environment tab
         descInput.value = '';
         enabledInput.checked = true;
         configInput.value = '{ "text": "Hello world" }';
@@ -1725,7 +1820,26 @@
         renderSnapshot();
       });
 
+      // Environment tab event listeners
+      envTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const env = tab.getAttribute('data-env');
+          saveSelectedEnvironment(env);
+        });
+      });
+
+      // Listen for hash changes (back/forward navigation)
+      window.addEventListener('hashchange', () => {
+        loadSelectedEnvironment();
+        updateEnvTabs();
+        renderSnapshot();
+      });
+
       (async function init() {
+        // Load selected environment from localStorage/hash
+        loadSelectedEnvironment();
+        updateEnvTabs();
+        
         await fetchSnapshot();
         attachSSE();
         clearForm(); // but keeps snapshot/table
