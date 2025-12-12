@@ -112,6 +112,429 @@
         margin-bottom: 8px;
       }
 
+      .search-filter-bar {
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .search-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .search-input {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        background: rgba(15, 23, 42, 0.96);
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: var(--transition);
+      }
+
+      .search-input:focus {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      }
+
+      .search-input::placeholder {
+        color: var(--text-soft);
+      }
+
+      .filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .filter-select {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        background: rgba(15, 23, 42, 0.96);
+        color: var(--text);
+        font-size: 12px;
+        font-family: inherit;
+        outline: none;
+        transition: var(--transition);
+        cursor: pointer;
+      }
+
+      .filter-select:focus {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      }
+
+      .result-count {
+        font-size: 12px;
+        color: var(--text-soft);
+        margin-left: auto;
+      }
+
+      .clear-filters-btn {
+        padding: 5px 12px;
+        font-size: 12px;
+        background: rgba(15, 23, 42, 0.95);
+        color: var(--text-soft);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 999px;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .clear-filters-btn:hover {
+        background: rgba(17, 24, 39, 0.96);
+        color: var(--text);
+      }
+
+      .highlight {
+        background-color: rgba(56, 189, 248, 0.3);
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      /* Environment tabs */
+      .env-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 8px;
+      }
+
+      .env-tab {
+        padding: 6px 16px;
+        font-size: 13px;
+        background: transparent;
+        color: var(--text-soft);
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: inherit;
+        font-weight: 500;
+      }
+
+      .env-tab:hover {
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .env-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      /* Main navigation tabs */
+      .main-nav {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .main-nav-tab {
+        padding: 8px 20px;
+        font-size: 14px;
+        background: transparent;
+        color: var(--text-soft);
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        transition: var(--transition);
+        font-family: inherit;
+        font-weight: 500;
+      }
+
+      .main-nav-tab:hover {
+        color: var(--text);
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .main-nav-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      .view-content {
+        display: none;
+      }
+
+      .view-content.active {
+        display: block;
+      }
+
+      /* Audit log styles */
+      .audit-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .audit-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .audit-filters {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .audit-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .audit-entry {
+        border-radius: 12px;
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.98));
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        padding: 14px 16px;
+        transition: var(--transition);
+      }
+
+      .audit-entry:hover {
+        background: rgba(15, 23, 42, 0.9);
+        border-color: rgba(56, 189, 248, 0.3);
+      }
+
+      .audit-entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .audit-entry-time {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .audit-entry-action {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin-top: 2px;
+      }
+
+      .audit-entry-resource {
+        font-size: 12px;
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        margin-top: 2px;
+      }
+
+      .audit-entry-status {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+      }
+
+      .audit-entry-status.success {
+        background: rgba(22, 163, 74, 0.16);
+        color: #bbf7d0;
+        border: 1px solid rgba(34, 197, 94, 0.45);
+      }
+
+      .audit-entry-status.error {
+        background: rgba(248, 113, 113, 0.12);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+      }
+
+      .audit-entry-details {
+        font-size: 12px;
+        color: var(--text-soft);
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(31, 41, 55, 0.5);
+      }
+
+      .audit-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .audit-pagination button {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+
+      .audit-pagination span {
+        font-size: 12px;
+        color: var(--text-soft);
+      }
+
+      .export-btn {
+        padding: 6px 14px;
+        font-size: 12px;
+        background: rgba(15, 23, 42, 0.95);
+        color: var(--text);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .export-btn:hover {
+        background: rgba(17, 24, 39, 0.96);
+        border-color: var(--accent);
+      }
+
+      .loading-spinner-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+      }
+
+      .loading-spinner-large {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(56, 189, 248, 0.3);
+        border-radius: 50%;
+        border-top-color: var(--accent);
+        animation: spin 0.8s linear infinite;
+      }
+
+      /* Keyboard shortcuts help modal */
+      .shortcuts-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .shortcuts-modal.visible {
+        display: flex;
+      }
+
+      .shortcuts-content {
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.98));
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+
+      .shortcuts-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .shortcuts-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .shortcuts-close {
+        background: transparent;
+        border: none;
+        color: var(--text-soft);
+        cursor: pointer;
+        font-size: 24px;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        transition: var(--transition);
+      }
+
+      .shortcuts-close:hover {
+        background: rgba(15, 23, 42, 0.9);
+        color: var(--text);
+      }
+
+      .shortcuts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .shortcut-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        background: rgba(15, 23, 42, 0.9);
+        border-radius: 8px;
+      }
+
+      .shortcut-desc {
+        font-size: 13px;
+        color: var(--text);
+      }
+
+      .shortcut-key {
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--accent);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        font-family: ui-monospace, SFMono-Regular, monospace;
+      }
+
+      /* Copy button for flag keys */
+      .copy-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        margin-left: 6px;
+        padding: 0;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(31, 41, 55, 0.95);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        color: var(--text-soft);
+        transition: var(--transition);
+      }
+
+      .copy-btn:hover {
+        background: rgba(17, 24, 39, 0.96);
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .copy-btn.copied {
+        color: #bbf7d0;
+        border-color: rgba(34, 197, 94, 0.7);
+      }
+
       .etag {
         font-size: 11px;
         color: var(--text-soft);
@@ -672,6 +1095,19 @@
           </div>
         </header>
 
+        <!-- Main Navigation -->
+        <div class="main-nav">
+          <button type="button" class="main-nav-tab active" id="navTabFlags">
+            Flags
+          </button>
+          <button type="button" class="main-nav-tab" id="navTabAudit">
+            Audit Log
+          </button>
+        </div>
+
+        <!-- Flags View -->
+        <div class="view-content active" id="viewFlags">
+
         <div class="top-row">
           <div class="etag" id="etagDisplay">
             <span class="etag-label">ETag:</span>
@@ -680,6 +1116,54 @@
           <div class="badge" id="sseStatus">
             <span class="badge-dot"></span>
             <span id="sseStatusText">SSE: connecting…</span>
+          </div>
+        </div>
+
+        <!-- Environment Tabs -->
+        <div class="env-tabs">
+          <button type="button" class="env-tab" data-env="prod" id="envTabProd">
+            Production
+          </button>
+          <button type="button" class="env-tab" data-env="staging" id="envTabStaging">
+            Staging
+          </button>
+          <button type="button" class="env-tab" data-env="dev" id="envTabDev">
+            Development
+          </button>
+        </div>
+
+        <!-- Search & Filter Bar -->
+        <div class="search-filter-bar">
+          <div class="search-row">
+            <input
+              type="text"
+              id="searchInput"
+              class="search-input"
+              placeholder="🔍 Search flags by key or description..."
+              autocomplete="off"
+            />
+          </div>
+          <div class="filter-row">
+            <select id="statusFilter" class="filter-select">
+              <option value="">Status: All</option>
+              <option value="enabled">Status: Enabled</option>
+              <option value="disabled">Status: Disabled</option>
+            </select>
+            <select id="rolloutFilter" class="filter-select">
+              <option value="">Rollout: All</option>
+              <option value="full">Rollout: Full (100%)</option>
+              <option value="partial">Rollout: Partial (&lt;100%)</option>
+              <option value="off">Rollout: Off (0%)</option>
+            </select>
+            <select id="expressionFilter" class="filter-select">
+              <option value="">Expression: All</option>
+              <option value="with">With Expression</option>
+              <option value="without">Without Expression</option>
+            </select>
+            <button type="button" id="clearFiltersBtn" class="clear-filters-btn">
+              Clear filters
+            </button>
+            <span class="result-count" id="resultCount">Showing 0 flags</span>
           </div>
         </div>
 
@@ -706,6 +1190,55 @@
             </tbody>
           </table>
         </div>
+      </div>
+      <!-- End Flags View -->
+
+      <!-- Audit View -->
+      <div class="view-content" id="viewAudit">
+        <div class="audit-header">
+          <div class="audit-title">Audit Log</div>
+          <button type="button" class="export-btn" id="exportAuditBtn">
+            📥 Export CSV
+          </button>
+        </div>
+
+        <div class="audit-filters">
+          <select id="auditActionFilter" class="filter-select">
+            <option value="">Action: All</option>
+            <option value="upsert_flag">Create/Update Flag</option>
+            <option value="delete_flag">Delete Flag</option>
+            <option value="create_api_key">Create API Key</option>
+            <option value="revoke_api_key">Revoke API Key</option>
+          </select>
+          <input
+            type="text"
+            id="auditResourceFilter"
+            class="search-input"
+            placeholder="Filter by resource (e.g., flags/prod/my_flag)"
+            style="max-width: 300px;"
+          />
+          <button type="button" id="clearAuditFiltersBtn" class="clear-filters-btn">
+            Clear filters
+          </button>
+        </div>
+
+        <div id="auditTimeline" class="audit-timeline">
+          <div class="loading-spinner-container">
+            <div class="loading-spinner-large"></div>
+          </div>
+        </div>
+
+        <div class="audit-pagination" id="auditPagination">
+          <button type="button" class="btn-secondary" id="auditPrevBtn" disabled>
+            Previous
+          </button>
+          <span id="auditPageInfo">Page 1</span>
+          <button type="button" class="btn-secondary" id="auditNextBtn">
+            Next
+          </button>
+        </div>
+      </div>
+      <!-- End Audit View -->
       </div>
 
       <!-- RIGHT: Editor -->
@@ -826,6 +1359,42 @@
     <!-- Toast container -->
     <div id="toastContainer"></div>
 
+    <!-- Keyboard shortcuts modal -->
+    <div class="shortcuts-modal" id="shortcutsModal">
+      <div class="shortcuts-content">
+        <div class="shortcuts-header">
+          <div class="shortcuts-title">⌨️ Keyboard Shortcuts</div>
+          <button type="button" class="shortcuts-close" id="shortcutsClose">×</button>
+        </div>
+        <div class="shortcuts-list">
+          <div class="shortcut-item">
+            <div class="shortcut-desc">Focus search</div>
+            <div class="shortcut-key">/</div>
+          </div>
+          <div class="shortcut-item">
+            <div class="shortcut-desc">New flag</div>
+            <div class="shortcut-key">n</div>
+          </div>
+          <div class="shortcut-item">
+            <div class="shortcut-desc">Show this help</div>
+            <div class="shortcut-key">?</div>
+          </div>
+          <div class="shortcut-item">
+            <div class="shortcut-desc">Close modal</div>
+            <div class="shortcut-key">Esc</div>
+          </div>
+          <div class="shortcut-item">
+            <div class="shortcut-desc">Switch to Flags view</div>
+            <div class="shortcut-key">1</div>
+          </div>
+          <div class="shortcut-item">
+            <div class="shortcut-desc">Switch to Audit view</div>
+            <div class="shortcut-key">2</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       // Determine API_BASE dynamically: use ?api_base=... query param if present, else hardcoded localhost:8080
       function getApiBase() {
@@ -870,6 +1439,55 @@
       let selectedKey = null;
       let selectedEnv = null;
       let es = null;
+
+      // Search and filter state
+      let searchQuery = '';
+      let statusFilter = '';
+      let rolloutFilter = '';
+      let expressionFilter = '';
+      let selectedEnvironment = 'prod'; // Default environment
+
+      // Get filter elements
+      const searchInput = document.getElementById('searchInput');
+      const statusFilterSelect = document.getElementById('statusFilter');
+      const rolloutFilterSelect = document.getElementById('rolloutFilter');
+      const expressionFilterSelect = document.getElementById('expressionFilter');
+      const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+      const resultCount = document.getElementById('resultCount');
+
+      // Get environment tab elements
+      const envTabProd = document.getElementById('envTabProd');
+      const envTabStaging = document.getElementById('envTabStaging');
+      const envTabDev = document.getElementById('envTabDev');
+      const envTabs = [envTabProd, envTabStaging, envTabDev];
+
+      // Get main navigation elements
+      const navTabFlags = document.getElementById('navTabFlags');
+      const navTabAudit = document.getElementById('navTabAudit');
+      const viewFlags = document.getElementById('viewFlags');
+      const viewAudit = document.getElementById('viewAudit');
+
+      // Audit log state
+      let auditLogs = [];
+      let auditCurrentPage = 1;
+      let auditLimit = 20;
+      let auditTotalCount = 0;
+      let auditActionFilter = '';
+      let auditResourceFilter = '';
+
+      // Get audit elements
+      const auditTimeline = document.getElementById('auditTimeline');
+      const auditPrevBtn = document.getElementById('auditPrevBtn');
+      const auditNextBtn = document.getElementById('auditNextBtn');
+      const auditPageInfo = document.getElementById('auditPageInfo');
+      const auditActionFilterSelect = document.getElementById('auditActionFilter');
+      const auditResourceFilterInput = document.getElementById('auditResourceFilter');
+      const clearAuditFiltersBtn = document.getElementById('clearAuditFiltersBtn');
+      const exportAuditBtn = document.getElementById('exportAuditBtn');
+
+      // Get shortcuts modal elements
+      const shortcutsModal = document.getElementById('shortcutsModal');
+      const shortcutsClose = document.getElementById('shortcutsClose');
 
       function setStatus(message, kind = 'info') {
         formStatus.textContent = message;
@@ -1095,10 +1713,338 @@
         return td;
       }
 
+      // Debounce helper
+      function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+          const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+          };
+          clearTimeout(timeout);
+          timeout = setTimeout(later, wait);
+        };
+      }
+
+      // Highlight matching text
+      function highlightText(text, query) {
+        if (!query) return escapeHtml(text);
+        const escapedText = escapeHtml(text);
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedQuery})`, 'gi');
+        return escapedText.replace(regex, '<span class="highlight">$1</span>');
+      }
+
+      // Filter flags based on search and filter criteria
+      function filterFlags(flags) {
+        return flags.filter(flag => {
+          // Environment filter
+          if (flag.env !== selectedEnvironment) return false;
+
+          // Search filter (match key or description)
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            const keyMatch = (flag.key || '').toLowerCase().includes(query);
+            const descMatch = (flag.description || '').toLowerCase().includes(query);
+            if (!keyMatch && !descMatch) return false;
+          }
+
+          // Status filter
+          if (statusFilter === 'enabled' && !flag.enabled) return false;
+          if (statusFilter === 'disabled' && flag.enabled) return false;
+
+          // Rollout filter
+          if (rolloutFilter === 'full' && flag.rollout !== 100) return false;
+          if (rolloutFilter === 'partial' && (flag.rollout === 0 || flag.rollout === 100)) return false;
+          if (rolloutFilter === 'off' && flag.rollout !== 0) return false;
+
+          // Expression filter
+          if (expressionFilter === 'with' && !flag.expression) return false;
+          if (expressionFilter === 'without' && flag.expression) return false;
+
+          return true;
+        });
+      }
+
+      // Update environment tabs active state
+      function updateEnvTabs() {
+        envTabs.forEach(tab => {
+          const tabEnv = tab.getAttribute('data-env');
+          if (tabEnv === selectedEnvironment) {
+            tab.classList.add('active');
+          } else {
+            tab.classList.remove('active');
+          }
+        });
+      }
+
+      // Load environment from localStorage or URL hash
+      function loadSelectedEnvironment() {
+        // Try URL hash first (e.g., #env=staging)
+        const hash = window.location.hash;
+        if (hash.startsWith('#env=')) {
+          const envFromHash = hash.substring(5);
+          if (['prod', 'staging', 'dev'].includes(envFromHash)) {
+            selectedEnvironment = envFromHash;
+            return;
+          }
+        }
+
+        // Fall back to localStorage
+        const savedEnv = localStorage.getItem('selectedEnvironment');
+        if (savedEnv && ['prod', 'staging', 'dev'].includes(savedEnv)) {
+          selectedEnvironment = savedEnv;
+        }
+      }
+
+      // Save environment to localStorage and URL hash
+      function saveSelectedEnvironment(env) {
+        selectedEnvironment = env;
+        localStorage.setItem('selectedEnvironment', env);
+        window.location.hash = `env=${env}`;
+        updateEnvTabs();
+        renderSnapshot();
+      }
+
+      // Fetch audit logs
+      async function fetchAuditLogs() {
+        try {
+          const offset = (auditCurrentPage - 1) * auditLimit;
+          const url = new URL(API_BASE + '/v1/admin/audit-logs');
+          url.searchParams.set('limit', auditLimit);
+          url.searchParams.set('offset', offset);
+
+          auditTimeline.innerHTML = `
+            <div class="loading-spinner-container">
+              <div class="loading-spinner-large"></div>
+            </div>`;
+
+          const adminKey = adminKeyInput.value.trim() || 'admin-123';
+          const res = await fetch(url.toString(), {
+            headers: {
+              Authorization: 'Bearer ' + adminKey,
+            },
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to fetch audit logs: ' + res.status);
+          }
+
+          const data = await res.json();
+          auditLogs = data.logs || [];
+          auditTotalCount = data.total_count || 0;
+
+          renderAuditLogs();
+          updateAuditPagination();
+        } catch (err) {
+          console.error('audit logs error', err);
+          auditTimeline.innerHTML = `
+            <div class="empty-state">
+              Failed to load audit logs: ${err.message}
+            </div>`;
+        }
+      }
+
+      // Render audit logs
+      function renderAuditLogs() {
+        // Apply client-side filters
+        let filtered = auditLogs;
+
+        if (auditActionFilter) {
+          filtered = filtered.filter(log => log.action === auditActionFilter);
+        }
+
+        if (auditResourceFilter) {
+          const query = auditResourceFilter.toLowerCase();
+          filtered = filtered.filter(log => 
+            (log.resource || '').toLowerCase().includes(query)
+          );
+        }
+
+        if (filtered.length === 0) {
+          auditTimeline.innerHTML = `
+            <div class="empty-state">
+              No audit logs found. ${auditActionFilter || auditResourceFilter ? 'Try different filters.' : ''}
+            </div>`;
+          return;
+        }
+
+        auditTimeline.innerHTML = filtered.map(log => {
+          const date = new Date(log.timestamp);
+          const timeStr = date.toLocaleString();
+          const statusClass = log.status >= 200 && log.status < 300 ? 'success' : 'error';
+          const statusText = log.status >= 200 && log.status < 300 ? `HTTP ${log.status}` : `Error ${log.status}`;
+
+          let detailsHtml = '';
+          if (log.details && Object.keys(log.details).length > 0) {
+            detailsHtml = `
+              <div class="audit-entry-details">
+                ${Object.entries(log.details).map(([key, val]) => 
+                  `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(JSON.stringify(val))}</div>`
+                ).join('')}
+              </div>`;
+          }
+
+          return `
+            <div class="audit-entry">
+              <div class="audit-entry-header">
+                <div>
+                  <div class="audit-entry-time">${escapeHtml(timeStr)}</div>
+                  <div class="audit-entry-action">${escapeHtml(log.action)}</div>
+                  <div class="audit-entry-resource">${escapeHtml(log.resource)}</div>
+                </div>
+                <div class="audit-entry-status ${statusClass}">${statusText}</div>
+              </div>
+              ${detailsHtml}
+            </div>`;
+        }).join('');
+      }
+
+      // Update audit pagination
+      function updateAuditPagination() {
+        const totalPages = Math.ceil(auditTotalCount / auditLimit);
+        auditPageInfo.textContent = `Page ${auditCurrentPage} of ${totalPages || 1}`;
+        auditPrevBtn.disabled = auditCurrentPage === 1;
+        auditNextBtn.disabled = auditCurrentPage >= totalPages;
+      }
+
+      // Export audit logs to CSV
+      function exportAuditToCSV() {
+        if (auditLogs.length === 0) {
+          showToast('No audit logs to export', 'error');
+          return;
+        }
+
+        const headers = ['Timestamp', 'Action', 'Resource', 'Status', 'IP Address', 'User Agent'];
+        const rows = auditLogs.map(log => [
+          log.timestamp,
+          log.action,
+          log.resource,
+          log.status,
+          log.ip_address,
+          log.user_agent
+        ]);
+
+        const csv = [
+          headers.join(','),
+          ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('Audit logs exported successfully', 'success');
+      }
+
+      // Switch main view
+      function switchMainView(view) {
+        if (view === 'flags') {
+          navTabFlags.classList.add('active');
+          navTabAudit.classList.remove('active');
+          viewFlags.classList.add('active');
+          viewAudit.classList.remove('active');
+        } else if (view === 'audit') {
+          navTabFlags.classList.remove('active');
+          navTabAudit.classList.add('active');
+          viewFlags.classList.remove('active');
+          viewAudit.classList.add('active');
+          
+          // Load audit logs when switching to audit view
+          if (auditLogs.length === 0) {
+            fetchAuditLogs();
+          }
+        }
+      }
+
+      // Copy to clipboard
+      function copyToClipboard(text, button) {
+        navigator.clipboard.writeText(text).then(() => {
+          button.classList.add('copied');
+          button.innerHTML = '✓';
+          showToast(`Copied: ${text}`, 'success');
+          
+          setTimeout(() => {
+            button.classList.remove('copied');
+            button.innerHTML = '📋';
+          }, 2000);
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showToast('Failed to copy to clipboard', 'error');
+        });
+      }
+
+      // Show shortcuts modal
+      function showShortcutsModal() {
+        shortcutsModal.classList.add('visible');
+      }
+
+      // Hide shortcuts modal
+      function hideShortcutsModal() {
+        shortcutsModal.classList.remove('visible');
+      }
+
+      // Keyboard shortcuts handler
+      document.addEventListener('keydown', (e) => {
+        // Don't trigger shortcuts when typing in input/textarea
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+          // Allow Esc to blur inputs
+          if (e.key === 'Escape') {
+            e.target.blur();
+          }
+          return;
+        }
+
+        // Handle shortcuts
+        switch (e.key) {
+          case '/':
+            e.preventDefault();
+            searchInput.focus();
+            break;
+          case 'n':
+            e.preventDefault();
+            clearForm();
+            keyInput.focus();
+            break;
+          case '?':
+            e.preventDefault();
+            showShortcutsModal();
+            break;
+          case 'Escape':
+            e.preventDefault();
+            hideShortcutsModal();
+            break;
+          case '1':
+            e.preventDefault();
+            switchMainView('flags');
+            break;
+          case '2':
+            e.preventDefault();
+            switchMainView('audit');
+            break;
+        }
+      });
+
+      // Update result count
+      function updateResultCount(filtered, total) {
+        if (filtered === total) {
+          resultCount.textContent = `Showing ${total} flag${total !== 1 ? 's' : ''}`;
+        } else {
+          resultCount.textContent = `Showing ${filtered} of ${total} flag${total !== 1 ? 's' : ''}`;
+        }
+      }
+
       function renderSnapshot() {
         if (!currentSnapshot || !currentSnapshot.flags) {
           clearTable();
           etagValue.textContent = currentSnapshot?.etag || '—';
+          updateResultCount(0, 0);
           return;
         }
 
@@ -1108,20 +2054,68 @@
         if (flagsArray.length === 0) {
           clearTable();
           etagValue.textContent = currentSnapshot.etag || '—';
+          updateResultCount(0, 0);
+          return;
+        }
+
+        // Apply filters
+        const filteredFlags = filterFlags(flagsArray);
+
+        if (filteredFlags.length === 0) {
+          flagsBody.innerHTML = `
+            <tr>
+              <td colspan="5">
+                <div class="empty-state">
+                  No flags match your search or filters. Try different criteria.
+                </div>
+              </td>
+            </tr>`;
+          etagValue.textContent = currentSnapshot.etag || '—';
+          updateResultCount(0, flagsArray.length);
           return;
         }
 
         flagsBody.innerHTML = '';
         etagValue.textContent = currentSnapshot.etag || '—';
+        updateResultCount(filteredFlags.length, flagsArray.length);
 
-        flagsArray.forEach((f) => {
+        filteredFlags.forEach((f) => {
           const tr = document.createElement('tr');
           if (f.key === selectedKey && f.env === selectedEnv) {
             tr.classList.add('selected');
           }
 
-          // Create cells safely to avoid XSS
-          tr.appendChild(createPillCell(f.key, 'pill-text'));
+          // Create key cell with highlighting
+          const keyCell = document.createElement('td');
+          keyCell.className = 'pill-text';
+          
+          // Create a container for key and copy button
+          const keyContainer = document.createElement('span');
+          keyContainer.style.display = 'inline-flex';
+          keyContainer.style.alignItems = 'center';
+          
+          const keyText = document.createElement('span');
+          if (searchQuery) {
+            keyText.innerHTML = highlightText(f.key, searchQuery);
+          } else {
+            keyText.textContent = f.key;
+          }
+          keyContainer.appendChild(keyText);
+          
+          // Add copy button
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.innerHTML = '📋';
+          copyBtn.title = 'Copy flag key';
+          copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            copyToClipboard(f.key, copyBtn);
+          };
+          keyContainer.appendChild(copyBtn);
+          
+          keyCell.appendChild(keyContainer);
+          tr.appendChild(keyCell);
+
           tr.appendChild(createPillCell(f.env, 'pill pill-env'));
           tr.appendChild(
             createPillCell(
@@ -1165,7 +2159,7 @@
         selectedKey = null;
         selectedEnv = null;
         keyInput.value = '';
-        envSelect.value = 'prod';
+        envSelect.value = selectedEnvironment; // Use current environment tab
         descInput.value = '';
         enabledInput.checked = true;
         configInput.value = '{ "text": "Hello world" }';
@@ -1468,7 +2462,112 @@
         }
       });
 
+      // Search and filter event listeners
+      const debouncedSearch = debounce(() => {
+        searchQuery = searchInput.value.trim();
+        renderSnapshot();
+      }, 300);
+
+      searchInput.addEventListener('input', debouncedSearch);
+
+      statusFilterSelect.addEventListener('change', () => {
+        statusFilter = statusFilterSelect.value;
+        renderSnapshot();
+      });
+
+      rolloutFilterSelect.addEventListener('change', () => {
+        rolloutFilter = rolloutFilterSelect.value;
+        renderSnapshot();
+      });
+
+      expressionFilterSelect.addEventListener('change', () => {
+        expressionFilter = expressionFilterSelect.value;
+        renderSnapshot();
+      });
+
+      clearFiltersBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        statusFilterSelect.value = '';
+        statusFilter = '';
+        rolloutFilterSelect.value = '';
+        rolloutFilter = '';
+        expressionFilterSelect.value = '';
+        expressionFilter = '';
+        renderSnapshot();
+      });
+
+      // Environment tab event listeners
+      envTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const env = tab.getAttribute('data-env');
+          saveSelectedEnvironment(env);
+        });
+      });
+
+      // Listen for hash changes (back/forward navigation)
+      window.addEventListener('hashchange', () => {
+        loadSelectedEnvironment();
+        updateEnvTabs();
+        renderSnapshot();
+      });
+
+      // Main navigation event listeners
+      navTabFlags.addEventListener('click', () => switchMainView('flags'));
+      navTabAudit.addEventListener('click', () => switchMainView('audit'));
+
+      // Audit pagination event listeners
+      auditPrevBtn.addEventListener('click', () => {
+        if (auditCurrentPage > 1) {
+          auditCurrentPage--;
+          fetchAuditLogs();
+        }
+      });
+
+      auditNextBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(auditTotalCount / auditLimit);
+        if (auditCurrentPage < totalPages) {
+          auditCurrentPage++;
+          fetchAuditLogs();
+        }
+      });
+
+      // Audit filter event listeners
+      auditActionFilterSelect.addEventListener('change', () => {
+        auditActionFilter = auditActionFilterSelect.value;
+        renderAuditLogs();
+      });
+
+      const debouncedAuditResourceFilter = debounce(() => {
+        auditResourceFilter = auditResourceFilterInput.value.trim();
+        renderAuditLogs();
+      }, 300);
+
+      auditResourceFilterInput.addEventListener('input', debouncedAuditResourceFilter);
+
+      clearAuditFiltersBtn.addEventListener('click', () => {
+        auditActionFilterSelect.value = '';
+        auditActionFilter = '';
+        auditResourceFilterInput.value = '';
+        auditResourceFilter = '';
+        renderAuditLogs();
+      });
+
+      exportAuditBtn.addEventListener('click', exportAuditToCSV);
+
+      // Shortcuts modal event listeners
+      shortcutsClose.addEventListener('click', hideShortcutsModal);
+      shortcutsModal.addEventListener('click', (e) => {
+        if (e.target === shortcutsModal) {
+          hideShortcutsModal();
+        }
+      });
+
       (async function init() {
+        // Load selected environment from localStorage/hash
+        loadSelectedEnvironment();
+        updateEnvTabs();
+        
         await fetchSnapshot();
         attachSSE();
         clearForm(); // but keeps snapshot/table
