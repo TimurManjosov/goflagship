@@ -54,6 +54,10 @@ func NewAuthenticator(keyStore KeyStore, legacyAdminKey string) *Authenticator {
 // lastUsedWorker processes last_used_at updates in the background
 func (a *Authenticator) lastUsedWorker() {
 	for update := range a.updateChan {
+		// Skip if keyStore is nil (e.g., in test scenarios)
+		if a.keyStore == nil {
+			continue
+		}
 		// Use a background context with timeout to prevent hanging
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = a.keyStore.UpdateAPIKeyLastUsed(ctx, update.id)
