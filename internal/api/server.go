@@ -122,8 +122,9 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/{id}", s.handleRevokeAPIKey)
 		})
 
-		// Audit logs route (admin+)
+		// Audit logs routes (admin+)
 		r.With(s.auth.RequireAuth(auth.RoleAdmin)).Get("/v1/admin/audit-logs", s.handleListAuditLogs)
+		r.With(s.auth.RequireAuth(auth.RoleAdmin)).Get("/v1/admin/audit-logs/export", s.handleExportAuditLogs)
 	})
 
 	// SSE route: no timeout, but optional gentle rate limit on connects

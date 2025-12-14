@@ -480,6 +480,218 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleExportAuditLogs exports audit logs in various formats (admin+)
+func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
+	// Parse format parameter (required)
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		BadRequestErrorWithFields(w, r, ErrCodeMissingField, "Missing required parameter", map[string]string{
+			"format": "Format parameter is required (csv, json, or jsonl)",
+		})
+		return
+	}
+	
+	if format != "csv" && format != "json" && format != "jsonl" {
+		BadRequestErrorWithFields(w, r, ErrCodeValidation, "Invalid format", map[string]string{
+			"format": "Format must be csv, json, or jsonl",
+		})
+		return
+	}
+
+	// Parse filter parameters (same as list endpoint)
+	var projectID, resourceType, resourceID, action pgtype.Text
+	var startDate, endDate pgtype.Timestamptz
+	
+	if p := r.URL.Query().Get("projectId"); p != "" {
+		projectID = pgtype.Text{String: p, Valid: true}
+	}
+	
+	if rt := r.URL.Query().Get("resourceType"); rt != "" {
+		resourceType = pgtype.Text{String: rt, Valid: true}
+	}
+	
+	if rid := r.URL.Query().Get("resourceId"); rid != "" {
+		resourceID = pgtype.Text{String: rid, Valid: true}
+	}
+	
+	if a := r.URL.Query().Get("action"); a != "" {
+		action = pgtype.Text{String: a, Valid: true}
+	}
+	
+	if sd := r.URL.Query().Get("startDate"); sd != "" {
+		if t, err := time.Parse(time.RFC3339, sd); err == nil {
+			startDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+	
+	if ed := r.URL.Query().Get("endDate"); ed != "" {
+		if t, err := time.Parse(time.RFC3339, ed); err == nil {
+			endDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+
+	pgStore, ok := s.store.(PostgresStoreInterface)
+	if !ok {
+		InternalError(w, r, "Database store not available")
+		return
+	}
+
+	// Fetch all matching logs (no pagination for export)
+	listParams := dbgen.ListAuditLogsParams{
+		Limit:        10000, // Reasonable export limit
+		Offset:       0,
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
+	}
+
+	logs, err := pgStore.ListAuditLogs(r.Context(), listParams)
+	if err != nil {
+		InternalError(w, r, "Failed to list audit logs")
+		return
+	}
+
+	// Convert to auditLogInfo for consistent formatting
+	auditLogs := make([]auditLogInfo, 0, len(logs))
+	for _, log := range logs {
+		info := auditLogInfo{
+			ID:        uuidToString(log.ID),
+			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
+			Action:    log.Action,
+			IPAddress: log.IpAddress,
+			UserAgent: log.UserAgent,
+			Status:    log.Status,
+		}
+		
+		if log.ResourceType.Valid {
+			info.ResourceType = log.ResourceType.String
+		}
+		
+		if log.ResourceID.Valid {
+			info.ResourceID = log.ResourceID.String
+		}
+		
+		if log.ProjectID.Valid {
+			info.ProjectID = log.ProjectID.String
+		}
+		
+		if log.Environment.Valid {
+			info.Environment = log.Environment.String
+		}
+		
+		if log.RequestID.Valid {
+			info.RequestID = log.RequestID.String
+		}
+		
+		if log.UserEmail.Valid {
+			info.UserEmail = log.UserEmail.String
+		}
+		
+		if log.ErrorMessage.Valid {
+			info.ErrorMessage = log.ErrorMessage.String
+		}
+		
+		if log.ApiKeyID.Valid {
+			apiKeyIDStr := uuidToString(log.ApiKeyID)
+			info.APIKeyID = &apiKeyIDStr
+		}
+		
+		// Don't parse JSONB fields for CSV (too complex), but include for JSON
+		if format != "csv" {
+			if len(log.BeforeState) > 0 {
+				var beforeState map[string]interface{}
+				if err := json.Unmarshal(log.BeforeState, &beforeState); err == nil {
+					info.BeforeState = beforeState
+				}
+			}
+			
+			if len(log.AfterState) > 0 {
+				var afterState map[string]interface{}
+				if err := json.Unmarshal(log.AfterState, &afterState); err == nil {
+					info.AfterState = afterState
+				}
+			}
+			
+			if len(log.Changes) > 0 {
+				var changes map[string]interface{}
+				if err := json.Unmarshal(log.Changes, &changes); err == nil {
+					info.Changes = changes
+				}
+			}
+		}
+		
+		auditLogs = append(auditLogs, info)
+	}
+
+	// Export based on format
+	switch format {
+	case "csv":
+		exportCSV(w, auditLogs)
+	case "json":
+		exportJSON(w, auditLogs)
+	case "jsonl":
+		exportJSONL(w, auditLogs)
+	}
+}
+
+// exportCSV exports audit logs as CSV
+func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.csv")
+	
+	// Write CSV header
+	w.Write([]byte("ID,Timestamp,Action,ResourceType,ResourceID,ProjectID,Environment,IPAddress,UserAgent,RequestID,APIKeyID,UserEmail,Status,ErrorMessage\n"))
+	
+	// Write CSV rows
+	for _, log := range logs {
+		apiKeyID := ""
+		if log.APIKeyID != nil {
+			apiKeyID = *log.APIKeyID
+		}
+		
+		// Escape fields that might contain commas
+		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s,%s,%s,%d,\"%s\"\n",
+			log.ID,
+			log.Timestamp,
+			log.Action,
+			log.ResourceType,
+			log.ResourceID,
+			log.ProjectID,
+			log.Environment,
+			log.IPAddress,
+			log.UserAgent, // Quoted because might contain commas
+			log.RequestID,
+			apiKeyID,
+			log.UserEmail,
+			log.Status,
+			log.ErrorMessage, // Quoted because might contain commas
+		)
+		w.Write([]byte(line))
+	}
+}
+
+// exportJSON exports audit logs as JSON array
+func exportJSON(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.json")
+	
+	json.NewEncoder(w).Encode(logs)
+}
+
+// exportJSONL exports audit logs as JSON Lines (one JSON object per line)
+func exportJSONL(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.jsonl")
+	
+	encoder := json.NewEncoder(w)
+	for _, log := range logs {
+		encoder.Encode(log)
+	}
+}
+
 // --- Helper functions ---
 
 // PostgresStoreInterface extends store.Store with postgres-specific methods
