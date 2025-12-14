@@ -24,6 +24,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const (
+	// auditQueueSize is the size of the buffered channel for audit log entries
+	auditQueueSize = 100
+)
+
 type Server struct {
 	store        store.Store
 	env          string
@@ -47,7 +52,7 @@ func NewServer(s store.Store, env, adminKey string) *Server {
 		queries := getQueriesFromStore(pgStore)
 		if queries != nil {
 			sink := audit.NewPostgresSink(queries)
-			auditSvc = audit.NewService(sink, audit.SystemClock{}, audit.UUIDGenerator{}, audit.NewDefaultRedactor(), 100)
+			auditSvc = audit.NewService(sink, audit.SystemClock{}, audit.UUIDGenerator{}, audit.NewDefaultRedactor(), auditQueueSize)
 		}
 	}
 

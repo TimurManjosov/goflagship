@@ -241,9 +241,13 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// After state: key is disabled
-	afterState := beforeState
-	if afterState != nil {
+	// After state: key is disabled (create proper copy)
+	var afterState map[string]any
+	if beforeState != nil {
+		afterState = make(map[string]any)
+		for k, v := range beforeState {
+			afterState[k] = v
+		}
 		afterState["enabled"] = false
 	}
 
