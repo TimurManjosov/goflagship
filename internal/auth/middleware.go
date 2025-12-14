@@ -54,6 +54,10 @@ func NewAuthenticator(keyStore KeyStore, legacyAdminKey string) *Authenticator {
 // lastUsedWorker processes last_used_at updates in the background
 func (a *Authenticator) lastUsedWorker() {
 	for update := range a.updateChan {
+		// Skip if keyStore is nil
+		if a.keyStore == nil {
+			continue
+		}
 		// Use a background context with timeout to prevent hanging
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = a.keyStore.UpdateAPIKeyLastUsed(ctx, update.id)
@@ -96,6 +100,13 @@ func (a *Authenticator) Authenticate(ctx context.Context, authHeader string) Aut
 	// - Cache keys for 5-10 minutes with periodic refresh
 	// - Invalidate cache on key creation/revocation
 	// - Use a mutex or RWMutex for thread-safe cache access
+	if a.keyStore == nil {
+		return AuthResult{
+			Authenticated: false,
+			Error:         "invalid token",
+		}
+	}
+
 	keys, err := a.keyStore.ListAPIKeys(ctx)
 	if err != nil {
 		return AuthResult{
