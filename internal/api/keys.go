@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/audit"
 	"github.com/TimurManjosov/goflagship/internal/auth"
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
 	"github.com/TimurManjosov/goflagship/internal/store"
@@ -128,8 +129,18 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "create_api_key", fmt.Sprintf("api_keys/%x", apiKey.ID.Bytes[:8]), http.StatusOK)
+	// Log the action (using new audit service)
+	afterState := map[string]any{
+		"id":       uuidToString(apiKey.ID),
+		"name":     apiKey.Name,
+		"role":     string(apiKey.Role),
+		"enabled":  apiKey.Enabled,
+		"created_at": apiKey.CreatedAt.Time.Format(time.RFC3339),
+	}
+	if apiKey.ExpiresAt.Valid {
+		afterState["expires_at"] = apiKey.ExpiresAt.Time.Format(time.RFC3339)
+	}
+	s.auditLog(r, audit.ActionCreated, audit.ResourceTypeAPIKey, uuidToString(apiKey.ID), "", nil, afterState, nil, audit.StatusSuccess, "")
 
 	// Build response
 	resp := createKeyResponse{
@@ -212,13 +223,32 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture before state for audit
+	var beforeState map[string]any
+	if apiKey, err := pgStore.GetAPIKeyByID(r.Context(), uuid); err == nil {
+		beforeState = map[string]any{
+			"id":      uuidToString(apiKey.ID),
+			"name":    apiKey.Name,
+			"role":    string(apiKey.Role),
+			"enabled": apiKey.Enabled,
+		}
+	}
+
 	if err := pgStore.RevokeAPIKey(r.Context(), uuid); err != nil {
+		// Log failed audit event
+		s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeAPIKey, keyID, "", beforeState, nil, nil, audit.StatusFailure, "Failed to revoke key")
 		InternalError(w, r, "Failed to revoke key")
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "revoke_api_key", "api_keys/"+keyID, http.StatusOK)
+	// After state: key is disabled
+	afterState := beforeState
+	if afterState != nil {
+		afterState["enabled"] = false
+	}
+
+	// Log the action (using audit.ActionDeleted for revocation)
+	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeAPIKey, keyID, "", beforeState, afterState, nil, audit.StatusSuccess, "")
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
@@ -273,13 +303,24 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := pgStore.ListAuditLogs(r.Context(), limit, offset)
+	// Create filter params (no filtering for now, just pagination)
+	listParams := dbgen.ListAuditLogsParams{
+		Limit:  limit,
+		Offset: offset,
+		// All filter fields default to NULL (no filtering)
+	}
+
+	logs, err := pgStore.ListAuditLogs(r.Context(), listParams)
 	if err != nil {
 		InternalError(w, r, "Failed to list audit logs")
 		return
 	}
 
-	totalCount, err := pgStore.CountAuditLogs(r.Context())
+	countParams := dbgen.CountAuditLogsParams{
+		// All filter fields default to NULL (no filtering)
+	}
+
+	totalCount, err := pgStore.CountAuditLogs(r.Context(), countParams)
 	if err != nil {
 		InternalError(w, r, "Failed to count audit logs")
 		return
@@ -298,11 +339,19 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			ID:        uuidToString(log.ID),
 			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
 			Action:    log.Action,
-			Resource:  log.Resource,
+			Resource:  "", // Legacy field - use resource_type/resource_id instead
 			IPAddress: log.IpAddress,
 			UserAgent: log.UserAgent,
 			Status:    log.Status,
 		}
+		
+		// Set resource from new fields if available
+		if log.ResourceType.Valid && log.ResourceID.Valid {
+			info.Resource = log.ResourceType.String + "/" + log.ResourceID.String
+		} else if log.Resource.Valid {
+			info.Resource = log.Resource.String
+		}
+		
 		if log.ApiKeyID.Valid {
 			apiKeyIDStr := uuidToString(log.ApiKeyID)
 			info.APIKeyID = &apiKeyIDStr
@@ -326,6 +375,7 @@ type PostgresStoreInterface interface {
 	store.Store
 	ListAPIKeys(ctx context.Context) ([]dbgen.ApiKey, error)
 	CreateAPIKey(ctx context.Context, params dbgen.CreateAPIKeyParams) (dbgen.ApiKey, error)
+	GetAPIKeyByID(ctx context.Context, id pgtype.UUID) (dbgen.ApiKey, error)
 	RevokeAPIKey(ctx context.Context, id pgtype.UUID) error
 	ListAuditLogs(ctx context.Context, params dbgen.ListAuditLogsParams) ([]dbgen.AuditLog, error)
 	CountAuditLogs(ctx context.Context, params dbgen.CountAuditLogsParams) (int64, error)
@@ -378,23 +428,4 @@ func parseUUID(s string) (pgtype.UUID, error) {
 	return uuid, nil
 }
 
-// auditLog logs an action to the audit log (non-blocking)
-func (s *Server) auditLog(r *http.Request, action, resource string, status int) {
-	apiKeyID, _ := auth.GetAPIKeyIDFromContext(r.Context())
-	entry := auth.AuditEntry{
-		APIKeyID:  apiKeyID,
-		Action:    action,
-		Resource:  resource,
-		IPAddress: auth.GetIPAddress(r),
-		UserAgent: r.UserAgent(),
-		Status:    status,
-	}
-
-	// Queue audit log entry (non-blocking)
-	select {
-	case s.auditChan <- entry:
-		// Successfully queued
-	default:
-		// Channel full, skip this audit log (acceptable under high load)
-	}
-}
+// Helper functions moved to server.go

@@ -166,6 +166,11 @@ func (p *PostgresStore) GetAuditLogsByAPIKey(ctx context.Context, apiKeyID pgtyp
 	})
 }
 
+// GetQueries returns the underlying sqlc Queries for direct access
+func (p *PostgresStore) GetQueries() *dbgen.Queries {
+	return p.q
+}
+
 // convertFromDB converts a database Flag to a store Flag.
 func (p *PostgresStore) convertFromDB(dbFlag dbgen.Flag) (Flag, error) {
 	var config map[string]any

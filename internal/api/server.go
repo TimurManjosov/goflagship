@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/audit"
 	"github.com/TimurManjosov/goflagship/internal/auth"
+	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
 	"github.com/TimurManjosov/goflagship/internal/snapshot"
 	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/TimurManjosov/goflagship/internal/targeting"
@@ -19,14 +21,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Server struct {
-	store       store.Store
-	env         string
-	adminAPIKey string
-	auth        *auth.Authenticator
-	auditChan   chan auth.AuditEntry
+	store        store.Store
+	env          string
+	adminAPIKey  string
+	auth         *auth.Authenticator
+	auditService *audit.Service
 }
 
 func NewServer(s store.Store, env, adminKey string) *Server {
@@ -38,32 +41,39 @@ func NewServer(s store.Store, env, adminKey string) *Server {
 
 	authenticator := auth.NewAuthenticator(keyStore, adminKey)
 
-	srv := &Server{
-		store:       s,
-		env:         env,
-		adminAPIKey: adminKey,
-		auth:        authenticator,
-		auditChan:   make(chan auth.AuditEntry, 100), // Buffered channel for audit logs
+	// Create audit service
+	var auditSvc *audit.Service
+	if pgStore, ok := s.(PostgresStoreInterface); ok {
+		queries := getQueriesFromStore(pgStore)
+		if queries != nil {
+			sink := audit.NewPostgresSink(queries)
+			auditSvc = audit.NewService(sink, audit.SystemClock{}, audit.UUIDGenerator{}, audit.NewDefaultRedactor(), 100)
+		}
 	}
 
-	// Start background worker for audit logging
-	go srv.auditWorker()
+	srv := &Server{
+		store:        s,
+		env:          env,
+		adminAPIKey:  adminKey,
+		auth:         authenticator,
+		auditService: auditSvc,
+	}
 
 	return srv
 }
 
-// auditWorker processes audit log entries in the background
-func (s *Server) auditWorker() {
-	for entry := range s.auditChan {
-		// Use background context with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
-		if pgStore, ok := s.store.(PostgresStoreInterface); ok {
-			_ = auth.LogAudit(ctx, pgStore, entry)
-		}
-
-		cancel()
+// Helper to extract *dbgen.Queries from PostgresStoreInterface
+func getQueriesFromStore(pgStore PostgresStoreInterface) *dbgen.Queries {
+	// This is a workaround - in a real implementation, we'd expose Queries directly
+	// For now, we'll use reflection or a type assertion
+	type queriesGetter interface {
+		GetQueries() *dbgen.Queries
 	}
+	if qg, ok := pgStore.(queriesGetter); ok {
+		return qg.GetQueries()
+	}
+	// If we can't get queries, audit service will be nil and we'll skip audit logging
+	return nil
 }
 
 func (s *Server) Router() http.Handler {
@@ -293,6 +303,15 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Capture before state for audit
+	var beforeState map[string]any
+	isCreate := false
+	if oldFlag, err := s.store.GetFlagByKey(r.Context(), req.Key); err == nil {
+		beforeState = flagToMap(oldFlag)
+	} else {
+		isCreate = true
+	}
+
 	// upsert via store
 	params := store.UpsertParams{
 		Key:         req.Key,
@@ -305,8 +324,16 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		Env:         env,
 	}
 	if err := s.store.UpsertFlag(r.Context(), params); err != nil {
+		// Log failed audit event
+		s.auditLog(r, audit.ActionUpdated, audit.ResourceTypeFlag, req.Key, env, nil, nil, nil, audit.StatusFailure, "Failed to save flag")
 		InternalError(w, r, "Failed to save flag")
 		return
+	}
+
+	// Capture after state for audit
+	var afterState map[string]any
+	if newFlag, err := s.store.GetFlagByKey(r.Context(), req.Key); err == nil {
+		afterState = flagToMap(newFlag)
 	}
 
 	// rebuild in-memory snapshot (read fresh rows for env)
@@ -315,8 +342,13 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "upsert_flag", fmt.Sprintf("flags/%s/%s", env, req.Key), http.StatusOK)
+	// Log successful audit event
+	action := audit.ActionUpdated
+	if isCreate {
+		action = audit.ActionCreated
+	}
+	changes := audit.ComputeChanges(beforeState, afterState)
+	s.auditLog(r, action, audit.ResourceTypeFlag, req.Key, env, beforeState, afterState, changes, audit.StatusSuccess, "")
 
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -343,8 +375,16 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture before state for audit
+	var beforeState map[string]any
+	if oldFlag, err := s.store.GetFlagByKey(r.Context(), key); err == nil {
+		beforeState = flagToMap(oldFlag)
+	}
+
 	// Delete from store
 	if err := s.store.DeleteFlag(r.Context(), key, env); err != nil {
+		// Log failed audit event
+		s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeFlag, key, env, beforeState, nil, nil, audit.StatusFailure, "Failed to delete flag")
 		InternalError(w, r, "Failed to delete flag")
 		return
 	}
@@ -355,8 +395,8 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "delete_flag", fmt.Sprintf("flags/%s/%s", env, key), http.StatusOK)
+	// Log successful audit event (after state is nil for delete)
+	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeFlag, key, env, beforeState, nil, nil, audit.StatusSuccess, "")
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -407,4 +447,112 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 		"error":   http.StatusText(code),
 		"message": msg,
 	})
+}
+
+// auditLog logs an audit event using the new audit service
+func (s *Server) auditLog(r *http.Request, action, resourceType, resourceID, environment string, beforeState, afterState, changes map[string]any, status, errorMsg string) {
+	if s.auditService == nil {
+		return // No audit service available
+	}
+
+	// Extract actor from context
+	actor := audit.Actor{
+		Kind:    audit.ActorKindSystem,
+		Display: "system",
+	}
+	
+	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
+		idStr := formatUUID(apiKeyID)
+		actor = audit.Actor{
+			Kind:    audit.ActorKindAPIKey,
+			ID:      &idStr,
+			Display: fmt.Sprintf("api_key:%s", idStr[:8]),
+		}
+	}
+
+	// Build audit event
+	event := audit.AuditEvent{
+		RequestID:    middleware.GetReqID(r.Context()),
+		Actor:        actor,
+		Source: audit.Source{
+			IPAddress: auth.GetIPAddress(r),
+			UserAgent: r.UserAgent(),
+		},
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Status:       status,
+	}
+
+	if environment != "" {
+		event.Environment = &environment
+	}
+
+	if beforeState != nil {
+		event.BeforeState = beforeState
+	}
+
+	if afterState != nil {
+		event.AfterState = afterState
+	}
+
+	if changes != nil {
+		event.Changes = changes
+	}
+
+	if errorMsg != "" {
+		event.ErrorMessage = &errorMsg
+	}
+
+	// Log asynchronously
+	s.auditService.Log(event)
+}
+
+// flagToMap converts a store.Flag to a map for audit logging
+func flagToMap(flag *store.Flag) map[string]any {
+	if flag == nil {
+		return nil
+	}
+
+	m := map[string]any{
+		"key":         flag.Key,
+		"description": flag.Description,
+		"enabled":     flag.Enabled,
+		"rollout":     flag.Rollout,
+		"env":         flag.Env,
+		"updated_at":  flag.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if flag.Expression != nil {
+		m["expression"] = *flag.Expression
+	}
+
+	if flag.Config != nil {
+		m["config"] = flag.Config
+	}
+
+	if len(flag.Variants) > 0 {
+		variants := make([]map[string]any, len(flag.Variants))
+		for i, v := range flag.Variants {
+			variants[i] = map[string]any{
+				"name":   v.Name,
+				"weight": v.Weight,
+			}
+			if v.Config != nil {
+				variants[i]["config"] = v.Config
+			}
+		}
+		m["variants"] = variants
+	}
+
+	return m
+}
+
+// formatUUID formats a pgtype.UUID to string
+func formatUUID(uuid pgtype.UUID) string {
+	if !uuid.Valid {
+		return ""
+	}
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
 }
