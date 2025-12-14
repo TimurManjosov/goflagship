@@ -651,11 +651,14 @@ func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 	defer csvWriter.Flush()
 	
 	// Write CSV header
-	csvWriter.Write([]string{
+	if err := csvWriter.Write([]string{
 		"ID", "Timestamp", "Action", "ResourceType", "ResourceID", 
 		"ProjectID", "Environment", "IPAddress", "UserAgent", "RequestID", 
 		"APIKeyID", "UserEmail", "Status", "ErrorMessage",
-	})
+	}); err != nil {
+		// Header already sent, can't return error response - log and return
+		return
+	}
 	
 	// Write CSV rows
 	for _, log := range logs {
@@ -664,7 +667,7 @@ func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 			apiKeyID = *log.APIKeyID
 		}
 		
-		csvWriter.Write([]string{
+		if err := csvWriter.Write([]string{
 			log.ID,
 			log.Timestamp,
 			log.Action,
@@ -679,7 +682,10 @@ func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 			log.UserEmail,
 			fmt.Sprintf("%d", log.Status),
 			log.ErrorMessage,
-		})
+		}); err != nil {
+			// Can't return error at this point, just stop writing
+			return
+		}
 	}
 }
 
