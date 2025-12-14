@@ -27,6 +27,9 @@ import (
 const (
 	// auditQueueSize is the size of the buffered channel for audit log entries
 	auditQueueSize = 100
+	
+	// maxAuditExportLimit is the maximum number of audit logs that can be exported at once
+	maxAuditExportLimit = 10000
 )
 
 type Server struct {

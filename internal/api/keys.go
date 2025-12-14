@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -542,7 +543,7 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch all matching logs (no pagination for export)
 	listParams := dbgen.ListAuditLogsParams{
-		Limit:        10000, // Reasonable export limit
+		Limit:        maxAuditExportLimit,
 		Offset:       0,
 		ProjectID:    projectID,
 		ResourceType: resourceType,
@@ -641,13 +642,20 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// exportCSV exports audit logs as CSV
+// exportCSV exports audit logs as CSV using proper CSV encoding
 func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.csv")
 	
+	csvWriter := csv.NewWriter(w)
+	defer csvWriter.Flush()
+	
 	// Write CSV header
-	w.Write([]byte("ID,Timestamp,Action,ResourceType,ResourceID,ProjectID,Environment,IPAddress,UserAgent,RequestID,APIKeyID,UserEmail,Status,ErrorMessage\n"))
+	csvWriter.Write([]string{
+		"ID", "Timestamp", "Action", "ResourceType", "ResourceID", 
+		"ProjectID", "Environment", "IPAddress", "UserAgent", "RequestID", 
+		"APIKeyID", "UserEmail", "Status", "ErrorMessage",
+	})
 	
 	// Write CSV rows
 	for _, log := range logs {
@@ -656,8 +664,7 @@ func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 			apiKeyID = *log.APIKeyID
 		}
 		
-		// Escape fields that might contain commas
-		line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s,%s,%s,%d,\"%s\"\n",
+		csvWriter.Write([]string{
 			log.ID,
 			log.Timestamp,
 			log.Action,
@@ -666,14 +673,13 @@ func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
 			log.ProjectID,
 			log.Environment,
 			log.IPAddress,
-			log.UserAgent, // Quoted because might contain commas
+			log.UserAgent,
 			log.RequestID,
 			apiKeyID,
 			log.UserEmail,
-			log.Status,
-			log.ErrorMessage, // Quoted because might contain commas
-		)
-		w.Write([]byte(line))
+			fmt.Sprintf("%d", log.Status),
+			log.ErrorMessage,
+		})
 	}
 }
 
