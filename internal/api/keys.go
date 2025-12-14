@@ -259,29 +259,50 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 // --- Audit Log Endpoints ---
 
 type listAuditLogsResponse struct {
-	Logs       []auditLogInfo `json:"logs"`
-	TotalCount int64          `json:"total_count"`
-	Limit      int32          `json:"limit"`
-	Offset     int32          `json:"offset"`
+	Logs       []auditLogInfo   `json:"logs"`
+	Pagination paginationInfo   `json:"pagination"`
+}
+
+type paginationInfo struct {
+	Page  int32 `json:"page"`
+	Limit int32 `json:"limit"`
+	Total int64 `json:"total"`
+	Pages int32 `json:"pages"`
 }
 
 type auditLogInfo struct {
-	ID        string                 `json:"id"`
-	Timestamp string                 `json:"timestamp"`
-	APIKeyID  *string                `json:"api_key_id,omitempty"`
-	Action    string                 `json:"action"`
-	Resource  string                 `json:"resource"`
-	IPAddress string                 `json:"ip_address"`
-	UserAgent string                 `json:"user_agent"`
-	Status    int32                  `json:"status"`
-	Details   map[string]interface{} `json:"details,omitempty"`
+	ID           string                 `json:"id"`
+	Timestamp    string                 `json:"timestamp"`
+	Action       string                 `json:"action"`
+	ResourceType string                 `json:"resource_type,omitempty"`
+	ResourceID   string                 `json:"resource_id,omitempty"`
+	ProjectID    string                 `json:"project_id,omitempty"`
+	Environment  string                 `json:"environment,omitempty"`
+	BeforeState  map[string]interface{} `json:"before_state,omitempty"`
+	AfterState   map[string]interface{} `json:"after_state,omitempty"`
+	Changes      map[string]interface{} `json:"changes,omitempty"`
+	IPAddress    string                 `json:"ip_address"`
+	UserAgent    string                 `json:"user_agent"`
+	RequestID    string                 `json:"request_id,omitempty"`
+	APIKeyID     *string                `json:"api_key_id,omitempty"`
+	UserEmail    string                 `json:"user_email,omitempty"`
+	Status       int32                  `json:"status"`
+	ErrorMessage string                 `json:"error_message,omitempty"`
+	Resource     string                 `json:"resource,omitempty"` // Legacy field
 }
 
-// handleListAuditLogs lists audit logs with pagination (admin+)
+// handleListAuditLogs lists audit logs with pagination and filtering (admin+)
 func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	// Parse pagination parameters
-	limit := int32(50) // default
-	offset := int32(0)
+	page := int32(1) // default page
+	limit := int32(20) // default limit per spec
+	
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		var p int
+		if _, err := fmt.Sscanf(pageStr, "%d", &p); err == nil && p > 0 {
+			page = int32(p)
+		}
+	}
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		var l int
@@ -289,11 +310,39 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			limit = int32(l)
 		}
 	}
+	
+	// Calculate offset from page
+	offset := (page - 1) * limit
 
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		var o int
-		if _, err := fmt.Sscanf(offsetStr, "%d", &o); err == nil && o >= 0 {
-			offset = int32(o)
+	// Parse filter parameters
+	var projectID, resourceType, resourceID, action pgtype.Text
+	var startDate, endDate pgtype.Timestamptz
+	
+	if p := r.URL.Query().Get("projectId"); p != "" {
+		projectID = pgtype.Text{String: p, Valid: true}
+	}
+	
+	if rt := r.URL.Query().Get("resourceType"); rt != "" {
+		resourceType = pgtype.Text{String: rt, Valid: true}
+	}
+	
+	if rid := r.URL.Query().Get("resourceId"); rid != "" {
+		resourceID = pgtype.Text{String: rid, Valid: true}
+	}
+	
+	if a := r.URL.Query().Get("action"); a != "" {
+		action = pgtype.Text{String: a, Valid: true}
+	}
+	
+	if sd := r.URL.Query().Get("startDate"); sd != "" {
+		if t, err := time.Parse(time.RFC3339, sd); err == nil {
+			startDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+	
+	if ed := r.URL.Query().Get("endDate"); ed != "" {
+		if t, err := time.Parse(time.RFC3339, ed); err == nil {
+			endDate = pgtype.Timestamptz{Time: t, Valid: true}
 		}
 	}
 
@@ -303,11 +352,16 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create filter params (no filtering for now, just pagination)
+	// Create filter params with all query parameters
 	listParams := dbgen.ListAuditLogsParams{
-		Limit:  limit,
-		Offset: offset,
-		// All filter fields default to NULL (no filtering)
+		Limit:        limit,
+		Offset:       offset,
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
 	}
 
 	logs, err := pgStore.ListAuditLogs(r.Context(), listParams)
@@ -317,7 +371,12 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	countParams := dbgen.CountAuditLogsParams{
-		// All filter fields default to NULL (no filtering)
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
 	}
 
 	totalCount, err := pgStore.CountAuditLogs(r.Context(), countParams)
@@ -326,12 +385,21 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Calculate total pages
+	pages := int32((totalCount + int64(limit) - 1) / int64(limit))
+	if pages == 0 {
+		pages = 1
+	}
+
 	// Build response
 	resp := listAuditLogsResponse{
-		Logs:       make([]auditLogInfo, 0, len(logs)),
-		TotalCount: totalCount,
-		Limit:      limit,
-		Offset:     offset,
+		Logs: make([]auditLogInfo, 0, len(logs)),
+		Pagination: paginationInfo{
+			Page:  page,
+			Limit: limit,
+			Total: totalCount,
+			Pages: pages,
+		},
 	}
 
 	for _, log := range logs {
@@ -339,13 +407,41 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			ID:        uuidToString(log.ID),
 			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
 			Action:    log.Action,
-			Resource:  "", // Legacy field - use resource_type/resource_id instead
 			IPAddress: log.IpAddress,
 			UserAgent: log.UserAgent,
 			Status:    log.Status,
 		}
 		
-		// Set resource from new fields if available
+		// Set new fields
+		if log.ResourceType.Valid {
+			info.ResourceType = log.ResourceType.String
+		}
+		
+		if log.ResourceID.Valid {
+			info.ResourceID = log.ResourceID.String
+		}
+		
+		if log.ProjectID.Valid {
+			info.ProjectID = log.ProjectID.String
+		}
+		
+		if log.Environment.Valid {
+			info.Environment = log.Environment.String
+		}
+		
+		if log.RequestID.Valid {
+			info.RequestID = log.RequestID.String
+		}
+		
+		if log.UserEmail.Valid {
+			info.UserEmail = log.UserEmail.String
+		}
+		
+		if log.ErrorMessage.Valid {
+			info.ErrorMessage = log.ErrorMessage.String
+		}
+		
+		// Set legacy resource field for backward compatibility
 		if log.ResourceType.Valid && log.ResourceID.Valid {
 			info.Resource = log.ResourceType.String + "/" + log.ResourceID.String
 		} else if log.Resource.Valid {
@@ -356,10 +452,26 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			apiKeyIDStr := uuidToString(log.ApiKeyID)
 			info.APIKeyID = &apiKeyIDStr
 		}
-		if len(log.Details) > 0 {
-			var details map[string]interface{}
-			if err := json.Unmarshal(log.Details, &details); err == nil {
-				info.Details = details
+		
+		// Parse JSONB fields
+		if len(log.BeforeState) > 0 {
+			var beforeState map[string]interface{}
+			if err := json.Unmarshal(log.BeforeState, &beforeState); err == nil {
+				info.BeforeState = beforeState
+			}
+		}
+		
+		if len(log.AfterState) > 0 {
+			var afterState map[string]interface{}
+			if err := json.Unmarshal(log.AfterState, &afterState); err == nil {
+				info.AfterState = afterState
+			}
+		}
+		
+		if len(log.Changes) > 0 {
+			var changes map[string]interface{}
+			if err := json.Unmarshal(log.Changes, &changes); err == nil {
+				info.Changes = changes
 			}
 		}
 		resp.Logs = append(resp.Logs, info)
