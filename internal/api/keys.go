@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/TimurManjosov/goflagship/internal/audit"
 	"github.com/TimurManjosov/goflagship/internal/auth"
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
 	"github.com/TimurManjosov/goflagship/internal/store"
@@ -128,8 +130,18 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "create_api_key", fmt.Sprintf("api_keys/%x", apiKey.ID.Bytes[:8]), http.StatusOK)
+	// Log the action (using new audit service)
+	afterState := map[string]any{
+		"id":       uuidToString(apiKey.ID),
+		"name":     apiKey.Name,
+		"role":     string(apiKey.Role),
+		"enabled":  apiKey.Enabled,
+		"created_at": apiKey.CreatedAt.Time.Format(time.RFC3339),
+	}
+	if apiKey.ExpiresAt.Valid {
+		afterState["expires_at"] = apiKey.ExpiresAt.Time.Format(time.RFC3339)
+	}
+	s.auditLog(r, audit.ActionCreated, audit.ResourceTypeAPIKey, uuidToString(apiKey.ID), "", nil, afterState, nil, audit.StatusSuccess, "")
 
 	// Build response
 	resp := createKeyResponse{
@@ -212,13 +224,36 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture before state for audit
+	var beforeState map[string]any
+	if apiKey, err := pgStore.GetAPIKeyByID(r.Context(), uuid); err == nil {
+		beforeState = map[string]any{
+			"id":      uuidToString(apiKey.ID),
+			"name":    apiKey.Name,
+			"role":    string(apiKey.Role),
+			"enabled": apiKey.Enabled,
+		}
+	}
+
 	if err := pgStore.RevokeAPIKey(r.Context(), uuid); err != nil {
+		// Log failed audit event
+		s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeAPIKey, keyID, "", beforeState, nil, nil, audit.StatusFailure, "Failed to revoke key")
 		InternalError(w, r, "Failed to revoke key")
 		return
 	}
 
-	// Log the action
-	s.auditLog(r, "revoke_api_key", "api_keys/"+keyID, http.StatusOK)
+	// After state: key is disabled (create proper copy)
+	var afterState map[string]any
+	if beforeState != nil {
+		afterState = make(map[string]any)
+		for k, v := range beforeState {
+			afterState[k] = v
+		}
+		afterState["enabled"] = false
+	}
+
+	// Log the action (using audit.ActionDeleted for revocation)
+	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeAPIKey, keyID, "", beforeState, afterState, nil, audit.StatusSuccess, "")
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
@@ -229,29 +264,50 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 // --- Audit Log Endpoints ---
 
 type listAuditLogsResponse struct {
-	Logs       []auditLogInfo `json:"logs"`
-	TotalCount int64          `json:"total_count"`
-	Limit      int32          `json:"limit"`
-	Offset     int32          `json:"offset"`
+	Logs       []auditLogInfo   `json:"logs"`
+	Pagination paginationInfo   `json:"pagination"`
+}
+
+type paginationInfo struct {
+	Page  int32 `json:"page"`
+	Limit int32 `json:"limit"`
+	Total int64 `json:"total"`
+	Pages int32 `json:"pages"`
 }
 
 type auditLogInfo struct {
-	ID        string                 `json:"id"`
-	Timestamp string                 `json:"timestamp"`
-	APIKeyID  *string                `json:"api_key_id,omitempty"`
-	Action    string                 `json:"action"`
-	Resource  string                 `json:"resource"`
-	IPAddress string                 `json:"ip_address"`
-	UserAgent string                 `json:"user_agent"`
-	Status    int32                  `json:"status"`
-	Details   map[string]interface{} `json:"details,omitempty"`
+	ID           string                 `json:"id"`
+	Timestamp    string                 `json:"timestamp"`
+	Action       string                 `json:"action"`
+	ResourceType string                 `json:"resource_type,omitempty"`
+	ResourceID   string                 `json:"resource_id,omitempty"`
+	ProjectID    string                 `json:"project_id,omitempty"`
+	Environment  string                 `json:"environment,omitempty"`
+	BeforeState  map[string]interface{} `json:"before_state,omitempty"`
+	AfterState   map[string]interface{} `json:"after_state,omitempty"`
+	Changes      map[string]interface{} `json:"changes,omitempty"`
+	IPAddress    string                 `json:"ip_address"`
+	UserAgent    string                 `json:"user_agent"`
+	RequestID    string                 `json:"request_id,omitempty"`
+	APIKeyID     *string                `json:"api_key_id,omitempty"`
+	UserEmail    string                 `json:"user_email,omitempty"`
+	Status       int32                  `json:"status"`
+	ErrorMessage string                 `json:"error_message,omitempty"`
+	Resource     string                 `json:"resource,omitempty"` // Legacy field
 }
 
-// handleListAuditLogs lists audit logs with pagination (admin+)
+// handleListAuditLogs lists audit logs with pagination and filtering (admin+)
 func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	// Parse pagination parameters
-	limit := int32(50) // default
-	offset := int32(0)
+	page := int32(1) // default page
+	limit := int32(20) // default limit per spec
+	
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		var p int
+		if _, err := fmt.Sscanf(pageStr, "%d", &p); err == nil && p > 0 {
+			page = int32(p)
+		}
+	}
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		var l int
@@ -259,11 +315,39 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			limit = int32(l)
 		}
 	}
+	
+	// Calculate offset from page
+	offset := (page - 1) * limit
 
-	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		var o int
-		if _, err := fmt.Sscanf(offsetStr, "%d", &o); err == nil && o >= 0 {
-			offset = int32(o)
+	// Parse filter parameters
+	var projectID, resourceType, resourceID, action pgtype.Text
+	var startDate, endDate pgtype.Timestamptz
+	
+	if p := r.URL.Query().Get("projectId"); p != "" {
+		projectID = pgtype.Text{String: p, Valid: true}
+	}
+	
+	if rt := r.URL.Query().Get("resourceType"); rt != "" {
+		resourceType = pgtype.Text{String: rt, Valid: true}
+	}
+	
+	if rid := r.URL.Query().Get("resourceId"); rid != "" {
+		resourceID = pgtype.Text{String: rid, Valid: true}
+	}
+	
+	if a := r.URL.Query().Get("action"); a != "" {
+		action = pgtype.Text{String: a, Valid: true}
+	}
+	
+	if sd := r.URL.Query().Get("startDate"); sd != "" {
+		if t, err := time.Parse(time.RFC3339, sd); err == nil {
+			startDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+	
+	if ed := r.URL.Query().Get("endDate"); ed != "" {
+		if t, err := time.Parse(time.RFC3339, ed); err == nil {
+			endDate = pgtype.Timestamptz{Time: t, Valid: true}
 		}
 	}
 
@@ -273,24 +357,54 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := pgStore.ListAuditLogs(r.Context(), limit, offset)
+	// Create filter params with all query parameters
+	listParams := dbgen.ListAuditLogsParams{
+		Limit:        limit,
+		Offset:       offset,
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
+	}
+
+	logs, err := pgStore.ListAuditLogs(r.Context(), listParams)
 	if err != nil {
 		InternalError(w, r, "Failed to list audit logs")
 		return
 	}
 
-	totalCount, err := pgStore.CountAuditLogs(r.Context())
+	countParams := dbgen.CountAuditLogsParams{
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
+	}
+
+	totalCount, err := pgStore.CountAuditLogs(r.Context(), countParams)
 	if err != nil {
 		InternalError(w, r, "Failed to count audit logs")
 		return
 	}
 
+	// Calculate total pages
+	pages := int32((totalCount + int64(limit) - 1) / int64(limit))
+	if pages == 0 {
+		pages = 1
+	}
+
 	// Build response
 	resp := listAuditLogsResponse{
-		Logs:       make([]auditLogInfo, 0, len(logs)),
-		TotalCount: totalCount,
-		Limit:      limit,
-		Offset:     offset,
+		Logs: make([]auditLogInfo, 0, len(logs)),
+		Pagination: paginationInfo{
+			Page:  page,
+			Limit: limit,
+			Total: totalCount,
+			Pages: pages,
+		},
 	}
 
 	for _, log := range logs {
@@ -298,25 +412,300 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 			ID:        uuidToString(log.ID),
 			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
 			Action:    log.Action,
-			Resource:  log.Resource,
 			IPAddress: log.IpAddress,
 			UserAgent: log.UserAgent,
 			Status:    log.Status,
 		}
+		
+		// Set new fields
+		if log.ResourceType.Valid {
+			info.ResourceType = log.ResourceType.String
+		}
+		
+		if log.ResourceID.Valid {
+			info.ResourceID = log.ResourceID.String
+		}
+		
+		if log.ProjectID.Valid {
+			info.ProjectID = log.ProjectID.String
+		}
+		
+		if log.Environment.Valid {
+			info.Environment = log.Environment.String
+		}
+		
+		if log.RequestID.Valid {
+			info.RequestID = log.RequestID.String
+		}
+		
+		if log.UserEmail.Valid {
+			info.UserEmail = log.UserEmail.String
+		}
+		
+		if log.ErrorMessage.Valid {
+			info.ErrorMessage = log.ErrorMessage.String
+		}
+		
+		// Set legacy resource field for backward compatibility
+		if log.ResourceType.Valid && log.ResourceID.Valid {
+			info.Resource = log.ResourceType.String + "/" + log.ResourceID.String
+		} else if log.Resource.Valid {
+			info.Resource = log.Resource.String
+		}
+		
 		if log.ApiKeyID.Valid {
 			apiKeyIDStr := uuidToString(log.ApiKeyID)
 			info.APIKeyID = &apiKeyIDStr
 		}
-		if len(log.Details) > 0 {
-			var details map[string]interface{}
-			if err := json.Unmarshal(log.Details, &details); err == nil {
-				info.Details = details
+		
+		// Parse JSONB fields
+		if len(log.BeforeState) > 0 {
+			var beforeState map[string]interface{}
+			if err := json.Unmarshal(log.BeforeState, &beforeState); err == nil {
+				info.BeforeState = beforeState
+			}
+		}
+		
+		if len(log.AfterState) > 0 {
+			var afterState map[string]interface{}
+			if err := json.Unmarshal(log.AfterState, &afterState); err == nil {
+				info.AfterState = afterState
+			}
+		}
+		
+		if len(log.Changes) > 0 {
+			var changes map[string]interface{}
+			if err := json.Unmarshal(log.Changes, &changes); err == nil {
+				info.Changes = changes
 			}
 		}
 		resp.Logs = append(resp.Logs, info)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleExportAuditLogs exports audit logs in various formats (admin+)
+func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
+	// Parse format parameter (required)
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		BadRequestErrorWithFields(w, r, ErrCodeMissingField, "Missing required parameter", map[string]string{
+			"format": "Format parameter is required (csv, json, or jsonl)",
+		})
+		return
+	}
+	
+	if format != "csv" && format != "json" && format != "jsonl" {
+		BadRequestErrorWithFields(w, r, ErrCodeValidation, "Invalid format", map[string]string{
+			"format": "Format must be csv, json, or jsonl",
+		})
+		return
+	}
+
+	// Parse filter parameters (same as list endpoint)
+	var projectID, resourceType, resourceID, action pgtype.Text
+	var startDate, endDate pgtype.Timestamptz
+	
+	if p := r.URL.Query().Get("projectId"); p != "" {
+		projectID = pgtype.Text{String: p, Valid: true}
+	}
+	
+	if rt := r.URL.Query().Get("resourceType"); rt != "" {
+		resourceType = pgtype.Text{String: rt, Valid: true}
+	}
+	
+	if rid := r.URL.Query().Get("resourceId"); rid != "" {
+		resourceID = pgtype.Text{String: rid, Valid: true}
+	}
+	
+	if a := r.URL.Query().Get("action"); a != "" {
+		action = pgtype.Text{String: a, Valid: true}
+	}
+	
+	if sd := r.URL.Query().Get("startDate"); sd != "" {
+		if t, err := time.Parse(time.RFC3339, sd); err == nil {
+			startDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+	
+	if ed := r.URL.Query().Get("endDate"); ed != "" {
+		if t, err := time.Parse(time.RFC3339, ed); err == nil {
+			endDate = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+
+	pgStore, ok := s.store.(PostgresStoreInterface)
+	if !ok {
+		InternalError(w, r, "Database store not available")
+		return
+	}
+
+	// Fetch all matching logs (no pagination for export)
+	listParams := dbgen.ListAuditLogsParams{
+		Limit:        maxAuditExportLimit,
+		Offset:       0,
+		ProjectID:    projectID,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Action:       action,
+		StartDate:    startDate,
+		EndDate:      endDate,
+	}
+
+	logs, err := pgStore.ListAuditLogs(r.Context(), listParams)
+	if err != nil {
+		InternalError(w, r, "Failed to list audit logs")
+		return
+	}
+
+	// Convert to auditLogInfo for consistent formatting
+	auditLogs := make([]auditLogInfo, 0, len(logs))
+	for _, log := range logs {
+		info := auditLogInfo{
+			ID:        uuidToString(log.ID),
+			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
+			Action:    log.Action,
+			IPAddress: log.IpAddress,
+			UserAgent: log.UserAgent,
+			Status:    log.Status,
+		}
+		
+		if log.ResourceType.Valid {
+			info.ResourceType = log.ResourceType.String
+		}
+		
+		if log.ResourceID.Valid {
+			info.ResourceID = log.ResourceID.String
+		}
+		
+		if log.ProjectID.Valid {
+			info.ProjectID = log.ProjectID.String
+		}
+		
+		if log.Environment.Valid {
+			info.Environment = log.Environment.String
+		}
+		
+		if log.RequestID.Valid {
+			info.RequestID = log.RequestID.String
+		}
+		
+		if log.UserEmail.Valid {
+			info.UserEmail = log.UserEmail.String
+		}
+		
+		if log.ErrorMessage.Valid {
+			info.ErrorMessage = log.ErrorMessage.String
+		}
+		
+		if log.ApiKeyID.Valid {
+			apiKeyIDStr := uuidToString(log.ApiKeyID)
+			info.APIKeyID = &apiKeyIDStr
+		}
+		
+		// Don't parse JSONB fields for CSV (too complex), but include for JSON
+		if format != "csv" {
+			if len(log.BeforeState) > 0 {
+				var beforeState map[string]interface{}
+				if err := json.Unmarshal(log.BeforeState, &beforeState); err == nil {
+					info.BeforeState = beforeState
+				}
+			}
+			
+			if len(log.AfterState) > 0 {
+				var afterState map[string]interface{}
+				if err := json.Unmarshal(log.AfterState, &afterState); err == nil {
+					info.AfterState = afterState
+				}
+			}
+			
+			if len(log.Changes) > 0 {
+				var changes map[string]interface{}
+				if err := json.Unmarshal(log.Changes, &changes); err == nil {
+					info.Changes = changes
+				}
+			}
+		}
+		
+		auditLogs = append(auditLogs, info)
+	}
+
+	// Export based on format
+	switch format {
+	case "csv":
+		exportCSV(w, auditLogs)
+	case "json":
+		exportJSON(w, auditLogs)
+	case "jsonl":
+		exportJSONL(w, auditLogs)
+	}
+}
+
+// exportCSV exports audit logs as CSV using proper CSV encoding
+func exportCSV(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.csv")
+	
+	csvWriter := csv.NewWriter(w)
+	defer csvWriter.Flush()
+	
+	// Write CSV header
+	if err := csvWriter.Write([]string{
+		"ID", "Timestamp", "Action", "ResourceType", "ResourceID", 
+		"ProjectID", "Environment", "IPAddress", "UserAgent", "RequestID", 
+		"APIKeyID", "UserEmail", "Status", "ErrorMessage",
+	}); err != nil {
+		// Header already sent, can't return error response - log and return
+		return
+	}
+	
+	// Write CSV rows
+	for _, log := range logs {
+		apiKeyID := ""
+		if log.APIKeyID != nil {
+			apiKeyID = *log.APIKeyID
+		}
+		
+		if err := csvWriter.Write([]string{
+			log.ID,
+			log.Timestamp,
+			log.Action,
+			log.ResourceType,
+			log.ResourceID,
+			log.ProjectID,
+			log.Environment,
+			log.IPAddress,
+			log.UserAgent,
+			log.RequestID,
+			apiKeyID,
+			log.UserEmail,
+			fmt.Sprintf("%d", log.Status),
+			log.ErrorMessage,
+		}); err != nil {
+			// Can't return error at this point, just stop writing
+			return
+		}
+	}
+}
+
+// exportJSON exports audit logs as JSON array
+func exportJSON(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.json")
+	
+	json.NewEncoder(w).Encode(logs)
+}
+
+// exportJSONL exports audit logs as JSON Lines (one JSON object per line)
+func exportJSONL(w http.ResponseWriter, logs []auditLogInfo) {
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit-logs.jsonl")
+	
+	encoder := json.NewEncoder(w)
+	for _, log := range logs {
+		encoder.Encode(log)
+	}
 }
 
 // --- Helper functions ---
@@ -326,10 +715,11 @@ type PostgresStoreInterface interface {
 	store.Store
 	ListAPIKeys(ctx context.Context) ([]dbgen.ApiKey, error)
 	CreateAPIKey(ctx context.Context, params dbgen.CreateAPIKeyParams) (dbgen.ApiKey, error)
+	GetAPIKeyByID(ctx context.Context, id pgtype.UUID) (dbgen.ApiKey, error)
 	RevokeAPIKey(ctx context.Context, id pgtype.UUID) error
-	ListAuditLogs(ctx context.Context, limit, offset int32) ([]dbgen.AuditLog, error)
-	CountAuditLogs(ctx context.Context) (int64, error)
-	CreateAuditLog(ctx context.Context, apiKeyID pgtype.UUID, action, resource, ipAddress, userAgent string, status int32, details map[string]interface{}) error
+	ListAuditLogs(ctx context.Context, params dbgen.ListAuditLogsParams) ([]dbgen.AuditLog, error)
+	CountAuditLogs(ctx context.Context, params dbgen.CountAuditLogsParams) (int64, error)
+	CreateAuditLog(ctx context.Context, params dbgen.CreateAuditLogParams) error
 }
 
 func uuidToString(uuid pgtype.UUID) string {
@@ -378,23 +768,4 @@ func parseUUID(s string) (pgtype.UUID, error) {
 	return uuid, nil
 }
 
-// auditLog logs an action to the audit log (non-blocking)
-func (s *Server) auditLog(r *http.Request, action, resource string, status int) {
-	apiKeyID, _ := auth.GetAPIKeyIDFromContext(r.Context())
-	entry := auth.AuditEntry{
-		APIKeyID:  apiKeyID,
-		Action:    action,
-		Resource:  resource,
-		IPAddress: auth.GetIPAddress(r),
-		UserAgent: r.UserAgent(),
-		Status:    status,
-	}
-
-	// Queue audit log entry (non-blocking)
-	select {
-	case s.auditChan <- entry:
-		// Successfully queued
-	default:
-		// Channel full, skip this audit log (acceptable under high load)
-	}
-}
+// Helper functions moved to server.go
