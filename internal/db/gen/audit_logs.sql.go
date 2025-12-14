@@ -13,47 +13,96 @@ import (
 
 const countAuditLogs = `-- name: CountAuditLogs :one
 SELECT COUNT(*) FROM audit_logs
+WHERE 
+  ($1::text IS NULL OR project_id = $1)
+  AND ($2::text IS NULL OR resource_type = $2)
+  AND ($3::text IS NULL OR resource_id = $3)
+  AND ($4::text IS NULL OR action = $4)
+  AND ($5::timestamptz IS NULL OR timestamp >= $5)
+  AND ($6::timestamptz IS NULL OR timestamp <= $6)
 `
 
-func (q *Queries) CountAuditLogs(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countAuditLogs)
+type CountAuditLogsParams struct {
+	ProjectID    pgtype.Text        `json:"project_id"`
+	ResourceType pgtype.Text        `json:"resource_type"`
+	ResourceID   pgtype.Text        `json:"resource_id"`
+	Action       pgtype.Text        `json:"action"`
+	StartDate    pgtype.Timestamptz `json:"start_date"`
+	EndDate      pgtype.Timestamptz `json:"end_date"`
+}
+
+func (q *Queries) CountAuditLogs(ctx context.Context, arg CountAuditLogsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAuditLogs,
+		arg.ProjectID,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Action,
+		arg.StartDate,
+		arg.EndDate,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createAuditLog = `-- name: CreateAuditLog :exec
-INSERT INTO audit_logs (api_key_id, action, resource, ip_address, user_agent, status, details)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO audit_logs (
+  api_key_id, user_email, action, resource_type, resource_id,
+  project_id, environment, before_state, after_state, changes,
+  ip_address, user_agent, request_id, status, error_message,
+  resource, details
+) VALUES (
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+)
 `
 
 type CreateAuditLogParams struct {
-	ApiKeyID  pgtype.UUID `json:"api_key_id"`
-	Action    string      `json:"action"`
-	Resource  string      `json:"resource"`
-	IpAddress string      `json:"ip_address"`
-	UserAgent string      `json:"user_agent"`
-	Status    int32       `json:"status"`
-	Details   []byte      `json:"details"`
+	ApiKeyID     pgtype.UUID `json:"api_key_id"`
+	UserEmail    pgtype.Text `json:"user_email"`
+	Action       string      `json:"action"`
+	ResourceType pgtype.Text `json:"resource_type"`
+	ResourceID   pgtype.Text `json:"resource_id"`
+	ProjectID    pgtype.Text `json:"project_id"`
+	Environment  pgtype.Text `json:"environment"`
+	BeforeState  []byte      `json:"before_state"`
+	AfterState   []byte      `json:"after_state"`
+	Changes      []byte      `json:"changes"`
+	IpAddress    string      `json:"ip_address"`
+	UserAgent    string      `json:"user_agent"`
+	RequestID    pgtype.Text `json:"request_id"`
+	Status       int32       `json:"status"`
+	ErrorMessage pgtype.Text `json:"error_message"`
+	Resource     pgtype.Text `json:"resource"`
+	Details      []byte      `json:"details"`
 }
 
 func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error {
 	_, err := q.db.Exec(ctx, createAuditLog,
 		arg.ApiKeyID,
+		arg.UserEmail,
 		arg.Action,
-		arg.Resource,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.ProjectID,
+		arg.Environment,
+		arg.BeforeState,
+		arg.AfterState,
+		arg.Changes,
 		arg.IpAddress,
 		arg.UserAgent,
+		arg.RequestID,
 		arg.Status,
+		arg.ErrorMessage,
+		arg.Resource,
 		arg.Details,
 	)
 	return err
 }
 
 const getAuditLogsByAPIKey = `-- name: GetAuditLogsByAPIKey :many
-SELECT id, timestamp, api_key_id, action, resource, ip_address, user_agent, status, details FROM audit_logs
+SELECT id, timestamp, api_key_id, action, resource, ip_address, user_agent, status, details, resource_type, resource_id, project_id, environment, before_state, after_state, changes, request_id, user_email, error_message FROM audit_logs
 WHERE api_key_id = $1
-ORDER BY timestamp DESC
+ORDER BY timestamp DESC, id
 LIMIT $2 OFFSET $3
 `
 
@@ -82,6 +131,16 @@ func (q *Queries) GetAuditLogsByAPIKey(ctx context.Context, arg GetAuditLogsByAP
 			&i.UserAgent,
 			&i.Status,
 			&i.Details,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ProjectID,
+			&i.Environment,
+			&i.BeforeState,
+			&i.AfterState,
+			&i.Changes,
+			&i.RequestID,
+			&i.UserEmail,
+			&i.ErrorMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -94,18 +153,40 @@ func (q *Queries) GetAuditLogsByAPIKey(ctx context.Context, arg GetAuditLogsByAP
 }
 
 const listAuditLogs = `-- name: ListAuditLogs :many
-SELECT id, timestamp, api_key_id, action, resource, ip_address, user_agent, status, details FROM audit_logs 
-ORDER BY timestamp DESC
+SELECT id, timestamp, api_key_id, action, resource, ip_address, user_agent, status, details, resource_type, resource_id, project_id, environment, before_state, after_state, changes, request_id, user_email, error_message FROM audit_logs 
+WHERE 
+  ($3::text IS NULL OR project_id = $3)
+  AND ($4::text IS NULL OR resource_type = $4)
+  AND ($5::text IS NULL OR resource_id = $5)
+  AND ($6::text IS NULL OR action = $6)
+  AND ($7::timestamptz IS NULL OR timestamp >= $7)
+  AND ($8::timestamptz IS NULL OR timestamp <= $8)
+ORDER BY timestamp DESC, id
 LIMIT $1 OFFSET $2
 `
 
 type ListAuditLogsParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Limit        int32              `json:"limit"`
+	Offset       int32              `json:"offset"`
+	ProjectID    pgtype.Text        `json:"project_id"`
+	ResourceType pgtype.Text        `json:"resource_type"`
+	ResourceID   pgtype.Text        `json:"resource_id"`
+	Action       pgtype.Text        `json:"action"`
+	StartDate    pgtype.Timestamptz `json:"start_date"`
+	EndDate      pgtype.Timestamptz `json:"end_date"`
 }
 
 func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, listAuditLogs, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listAuditLogs,
+		arg.Limit,
+		arg.Offset,
+		arg.ProjectID,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.Action,
+		arg.StartDate,
+		arg.EndDate,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +204,16 @@ func (q *Queries) ListAuditLogs(ctx context.Context, arg ListAuditLogsParams) ([
 			&i.UserAgent,
 			&i.Status,
 			&i.Details,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ProjectID,
+			&i.Environment,
+			&i.BeforeState,
+			&i.AfterState,
+			&i.Changes,
+			&i.RequestID,
+			&i.UserEmail,
+			&i.ErrorMessage,
 		); err != nil {
 			return nil, err
 		}

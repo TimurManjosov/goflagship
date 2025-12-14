@@ -67,15 +67,25 @@ type ApiKey struct {
 }
 
 type AuditLog struct {
-	ID        pgtype.UUID        `json:"id"`
-	Timestamp pgtype.Timestamptz `json:"timestamp"`
-	ApiKeyID  pgtype.UUID        `json:"api_key_id"`
-	Action    string             `json:"action"`
-	Resource  string             `json:"resource"`
-	IpAddress string             `json:"ip_address"`
-	UserAgent string             `json:"user_agent"`
-	Status    int32              `json:"status"`
-	Details   []byte             `json:"details"`
+	ID           pgtype.UUID        `json:"id"`
+	Timestamp    pgtype.Timestamptz `json:"timestamp"`
+	ApiKeyID     pgtype.UUID        `json:"api_key_id"`
+	Action       string             `json:"action"`
+	Resource     pgtype.Text        `json:"resource"`
+	IpAddress    string             `json:"ip_address"`
+	UserAgent    string             `json:"user_agent"`
+	Status       int32              `json:"status"`
+	Details      []byte             `json:"details"`
+	ResourceType pgtype.Text        `json:"resource_type"`
+	ResourceID   pgtype.Text        `json:"resource_id"`
+	ProjectID    pgtype.Text        `json:"project_id"`
+	Environment  pgtype.Text        `json:"environment"`
+	BeforeState  []byte             `json:"before_state"`
+	AfterState   []byte             `json:"after_state"`
+	Changes      []byte             `json:"changes"`
+	RequestID    pgtype.Text        `json:"request_id"`
+	UserEmail    pgtype.Text        `json:"user_email"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
 }
 
 type Flag struct {

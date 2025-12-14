@@ -327,9 +327,9 @@ type PostgresStoreInterface interface {
 	ListAPIKeys(ctx context.Context) ([]dbgen.ApiKey, error)
 	CreateAPIKey(ctx context.Context, params dbgen.CreateAPIKeyParams) (dbgen.ApiKey, error)
 	RevokeAPIKey(ctx context.Context, id pgtype.UUID) error
-	ListAuditLogs(ctx context.Context, limit, offset int32) ([]dbgen.AuditLog, error)
-	CountAuditLogs(ctx context.Context) (int64, error)
-	CreateAuditLog(ctx context.Context, apiKeyID pgtype.UUID, action, resource, ipAddress, userAgent string, status int32, details map[string]interface{}) error
+	ListAuditLogs(ctx context.Context, params dbgen.ListAuditLogsParams) ([]dbgen.AuditLog, error)
+	CountAuditLogs(ctx context.Context, params dbgen.CountAuditLogsParams) (int64, error)
+	CreateAuditLog(ctx context.Context, params dbgen.CreateAuditLogParams) error
 }
 
 func uuidToString(uuid pgtype.UUID) string {

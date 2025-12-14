@@ -143,34 +143,18 @@ func (p *PostgresStore) DeleteAPIKey(ctx context.Context, id pgtype.UUID) error 
 // --- Audit Logs ---
 
 // CreateAuditLog creates a new audit log entry
-func (p *PostgresStore) CreateAuditLog(ctx context.Context, apiKeyID pgtype.UUID, action, resource, ipAddress, userAgent string, status int32, details map[string]interface{}) error {
-	detailsJSON, err := json.Marshal(details)
-	if err != nil {
-		detailsJSON = []byte("{}")
-	}
-
-	return p.q.CreateAuditLog(ctx, dbgen.CreateAuditLogParams{
-		ApiKeyID:  apiKeyID,
-		Action:    action,
-		Resource:  resource,
-		IpAddress: ipAddress,
-		UserAgent: userAgent,
-		Status:    status,
-		Details:   detailsJSON,
-	})
+func (p *PostgresStore) CreateAuditLog(ctx context.Context, params dbgen.CreateAuditLogParams) error {
+	return p.q.CreateAuditLog(ctx, params)
 }
 
-// ListAuditLogs retrieves audit logs with pagination
-func (p *PostgresStore) ListAuditLogs(ctx context.Context, limit, offset int32) ([]dbgen.AuditLog, error) {
-	return p.q.ListAuditLogs(ctx, dbgen.ListAuditLogsParams{
-		Limit:  limit,
-		Offset: offset,
-	})
+// ListAuditLogs retrieves audit logs with pagination and filtering
+func (p *PostgresStore) ListAuditLogs(ctx context.Context, params dbgen.ListAuditLogsParams) ([]dbgen.AuditLog, error) {
+	return p.q.ListAuditLogs(ctx, params)
 }
 
-// CountAuditLogs returns the total count of audit logs
-func (p *PostgresStore) CountAuditLogs(ctx context.Context) (int64, error) {
-	return p.q.CountAuditLogs(ctx)
+// CountAuditLogs returns the total count of audit logs with filtering
+func (p *PostgresStore) CountAuditLogs(ctx context.Context, params dbgen.CountAuditLogsParams) (int64, error) {
+	return p.q.CountAuditLogs(ctx, params)
 }
 
 // GetAuditLogsByAPIKey retrieves audit logs for a specific API key
