@@ -1,7 +1,6 @@
 package webhook
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -21,27 +20,6 @@ type Event struct {
 	Resource    Resource          `json:"resource"`
 	Data        EventData         `json:"data"`
 	Metadata    Metadata          `json:"metadata"`
-}
-
-// MarshalJSON implements json.Marshaler
-func (e Event) MarshalJSON() ([]byte, error) {
-	type Alias Event
-	return json.Marshal(&struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
-	})
-}
-
-// UnmarshalJSON implements json.Unmarshaler
-func (e *Event) UnmarshalJSON(data []byte) error {
-	type Alias Event
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(e),
-	}
-	return json.Unmarshal(data, &aux)
 }
 
 // Resource identifies the resource that triggered the event

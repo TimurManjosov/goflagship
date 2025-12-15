@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"time"
@@ -69,8 +70,10 @@ func (d *Dispatcher) Dispatch(event Event) {
 	case d.queue <- event:
 		// Event queued successfully
 	default:
-		// Queue is full, drop event (in production, we might log this)
-		// This ensures we never block the caller
+		// Queue is full, drop event and log warning
+		log.Printf("WARNING: Webhook queue full, dropping event: type=%s, resource=%s/%s, env=%s",
+			event.Type, event.Resource.Type, event.Resource.Key, event.Environment)
+		// Note: In production, consider adding a metric here for monitoring
 	}
 }
 

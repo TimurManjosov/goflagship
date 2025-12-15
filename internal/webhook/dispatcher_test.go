@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"encoding/json"
 	"testing"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
@@ -124,8 +125,8 @@ func TestEvent_JSONMarshaling(t *testing.T) {
 		},
 	}
 
-	// Marshal to JSON
-	data, err := event.MarshalJSON()
+	// Marshal to JSON using standard json.Marshal
+	data, err := json.Marshal(event)
 	if err != nil {
 		t.Fatalf("Failed to marshal event: %v", err)
 	}
@@ -135,9 +136,9 @@ func TestEvent_JSONMarshaling(t *testing.T) {
 		t.Errorf("Marshaled event is empty")
 	}
 
-	// Unmarshal back
+	// Unmarshal back using standard json.Unmarshal
 	var decoded Event
-	if err := decoded.UnmarshalJSON(data); err != nil {
+	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Failed to unmarshal event: %v", err)
 	}
 
