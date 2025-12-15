@@ -99,3 +99,33 @@ type Flag struct {
 	Env         string             `json:"env"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
+
+type Webhook struct {
+	ID              pgtype.UUID        `json:"id"`
+	Url             string             `json:"url"`
+	Description     pgtype.Text        `json:"description"`
+	Enabled         bool               `json:"enabled"`
+	Events          []string           `json:"events"`
+	ProjectID       pgtype.UUID        `json:"project_id"`
+	Environments    []string           `json:"environments"`
+	Secret          string             `json:"secret"`
+	MaxRetries      int32              `json:"max_retries"`
+	TimeoutSeconds  int32              `json:"timeout_seconds"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LastTriggeredAt pgtype.Timestamptz `json:"last_triggered_at"`
+}
+
+type WebhookDelivery struct {
+	ID           pgtype.UUID        `json:"id"`
+	WebhookID    pgtype.UUID        `json:"webhook_id"`
+	EventType    string             `json:"event_type"`
+	Payload      []byte             `json:"payload"`
+	Timestamp    pgtype.Timestamptz `json:"timestamp"`
+	StatusCode   pgtype.Int4        `json:"status_code"`
+	ResponseBody pgtype.Text        `json:"response_body"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+	DurationMs   pgtype.Int4        `json:"duration_ms"`
+	Success      bool               `json:"success"`
+	RetryCount   int32              `json:"retry_count"`
+}
