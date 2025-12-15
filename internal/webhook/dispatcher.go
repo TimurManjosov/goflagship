@@ -23,16 +23,23 @@ const (
 	maxResponseBodySize = 1024
 )
 
+// WebhookQueries defines the interface for webhook database operations
+type WebhookQueries interface {
+	GetActiveWebhooks(ctx context.Context) ([]dbgen.Webhook, error)
+	UpdateWebhookLastTriggered(ctx context.Context, id pgtype.UUID) error
+	CreateWebhookDelivery(ctx context.Context, params dbgen.CreateWebhookDeliveryParams) (dbgen.WebhookDelivery, error)
+}
+
 // Dispatcher manages webhook event dispatching and delivery
 type Dispatcher struct {
-	queries *dbgen.Queries
+	queries WebhookQueries
 	client  *http.Client
 	queue   chan Event
 	done    chan struct{}
 }
 
 // NewDispatcher creates a new webhook dispatcher
-func NewDispatcher(queries *dbgen.Queries) *Dispatcher {
+func NewDispatcher(queries WebhookQueries) *Dispatcher {
 	return &Dispatcher{
 		queries: queries,
 		client: &http.Client{
