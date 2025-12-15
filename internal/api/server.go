@@ -17,6 +17,7 @@ import (
 	"github.com/TimurManjosov/goflagship/internal/targeting"
 	"github.com/TimurManjosov/goflagship/internal/telemetry"
 	"github.com/TimurManjosov/goflagship/internal/validation"
+	"github.com/TimurManjosov/goflagship/internal/webhook"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -33,11 +34,12 @@ const (
 )
 
 type Server struct {
-	store        store.Store
-	env          string
-	adminAPIKey  string
-	auth         *auth.Authenticator
-	auditService *audit.Service
+	store             store.Store
+	env               string
+	adminAPIKey       string
+	auth              *auth.Authenticator
+	auditService      *audit.Service
+	webhookDispatcher *webhook.Dispatcher
 }
 
 func NewServer(s store.Store, env, adminKey string) *Server {
@@ -49,22 +51,28 @@ func NewServer(s store.Store, env, adminKey string) *Server {
 
 	authenticator := auth.NewAuthenticator(keyStore, adminKey)
 
-	// Create audit service
+	// Create audit service and webhook dispatcher
 	var auditSvc *audit.Service
+	var webhookDisp *webhook.Dispatcher
 	if pgStore, ok := s.(PostgresStoreInterface); ok {
 		queries := getQueriesFromStore(pgStore)
 		if queries != nil {
 			sink := audit.NewPostgresSink(queries)
 			auditSvc = audit.NewService(sink, audit.SystemClock{}, audit.UUIDGenerator{}, audit.NewDefaultRedactor(), auditQueueSize)
+			
+			// Create and start webhook dispatcher
+			webhookDisp = webhook.NewDispatcher(queries)
+			webhookDisp.Start()
 		}
 	}
 
 	srv := &Server{
-		store:        s,
-		env:          env,
-		adminAPIKey:  adminKey,
-		auth:         authenticator,
-		auditService: auditSvc,
+		store:             s,
+		env:               env,
+		adminAPIKey:       adminKey,
+		auth:              authenticator,
+		auditService:      auditSvc,
+		webhookDispatcher: webhookDisp,
 	}
 
 	return srv
@@ -128,6 +136,18 @@ func (s *Server) Router() http.Handler {
 			r.Post("/", s.handleCreateAPIKey)
 			r.Get("/", s.handleListAPIKeys)
 			r.Delete("/{id}", s.handleRevokeAPIKey)
+		})
+
+		// Webhook management routes (admin+)
+		r.Route("/v1/admin/webhooks", func(r chi.Router) {
+			r.Use(s.auth.RequireAuth(auth.RoleAdmin))
+			r.Get("/", s.handleListWebhooks)
+			r.Post("/", s.handleCreateWebhook)
+			r.Get("/{id}", s.handleGetWebhook)
+			r.Put("/{id}", s.handleUpdateWebhook)
+			r.Delete("/{id}", s.handleDeleteWebhook)
+			r.Get("/{id}/deliveries", s.handleListWebhookDeliveries)
+			r.Post("/{id}/test", s.handleTestWebhook)
 		})
 
 		// Audit logs routes (admin+)
@@ -359,6 +379,9 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	changes := audit.ComputeChanges(beforeState, afterState)
 	s.auditLog(r, action, audit.ResourceTypeFlag, req.Key, env, beforeState, afterState, changes, audit.StatusSuccess, "")
 
+	// Dispatch webhook event
+	s.dispatchWebhookEvent(r, isCreate, req.Key, env, beforeState, afterState, changes)
+
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
 		OK:   true,
@@ -406,6 +429,9 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 
 	// Log successful audit event (after state is nil for delete)
 	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeFlag, key, env, beforeState, nil, nil, audit.StatusSuccess, "")
+
+	// Dispatch webhook event for deletion
+	s.dispatchWebhookEvent(r, false, key, env, beforeState, nil, nil)
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -564,4 +590,51 @@ func formatUUID(uuid pgtype.UUID) string {
 	}
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
+}
+
+// dispatchWebhookEvent dispatches a webhook event for flag changes
+func (s *Server) dispatchWebhookEvent(r *http.Request, isCreate bool, key, env string, beforeState, afterState, changes map[string]any) {
+	if s.webhookDispatcher == nil {
+		return // No webhook dispatcher available
+	}
+
+	// Determine event type
+	var eventType string
+	if beforeState == nil && afterState != nil {
+		eventType = webhook.EventFlagCreated
+	} else if beforeState != nil && afterState == nil {
+		eventType = webhook.EventFlagDeleted
+	} else {
+		eventType = webhook.EventFlagUpdated
+	}
+
+	// Build metadata
+	metadata := webhook.Metadata{
+		RequestID: middleware.GetReqID(r.Context()),
+		IPAddress: auth.GetIPAddress(r),
+	}
+	
+	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
+		metadata.APIKeyID = formatUUID(apiKeyID)
+	}
+
+	// Create and dispatch event
+	event := webhook.Event{
+		Type:        eventType,
+		Timestamp:   time.Now(),
+		Environment: env,
+		Resource: webhook.Resource{
+			Type: "flag",
+			Key:  key,
+		},
+		Data: webhook.EventData{
+			Before:  beforeState,
+			After:   afterState,
+			Changes: changes,
+		},
+		Metadata: metadata,
+	}
+
+	// Dispatch asynchronously (non-blocking)
+	s.webhookDispatcher.Dispatch(event)
 }
