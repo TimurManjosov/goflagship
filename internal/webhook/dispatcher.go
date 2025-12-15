@@ -175,8 +175,7 @@ func (d *Dispatcher) deliverWithRetry(ctx context.Context, webhook dbgen.Webhook
 
 		// Create context with timeout for this request
 		reqCtx, cancel := context.WithTimeout(ctx, time.Duration(webhook.TimeoutSeconds)*time.Second)
-		defer cancel()
-
+		
 		resp, err := d.client.Do(req.WithContext(reqCtx))
 		duration := time.Since(start)
 
@@ -193,6 +192,9 @@ func (d *Dispatcher) deliverWithRetry(ctx context.Context, webhook dbgen.Webhook
 			responseBody = string(bodyBytes)
 			resp.Body.Close()
 		}
+
+		// Cancel context immediately after request completes
+		cancel()
 
 		success := (err == nil && statusCode >= 200 && statusCode < 300)
 
