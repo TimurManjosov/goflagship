@@ -1,4 +1,10 @@
 // Package rollout provides deterministic user bucketing for feature flag rollouts.
+// It uses consistent hashing to assign users to buckets (0-99) based on their user ID,
+// flag key, and a secret salt. This ensures:
+//   - Same user always gets same result for a flag (deterministic)
+//   - Even distribution across buckets (uses xxHash algorithm)
+//   - Consistency between server and client evaluation (when using same salt)
+//   - Safe progressive rollouts (increasing from 10% to 20% only adds users, never removes)
 package rollout
 
 import "errors"
@@ -16,18 +22,28 @@ type Variant struct {
 	Config map[string]any `json:"config,omitempty"` // Optional config for this variant
 }
 
-// IsRolledOut returns true if the user is within the rollout percentage.
-// For rollout=0, always returns false. For rollout=100, always returns true.
-// Empty userID returns false (no user context means no rollout).
+// IsRolledOut determines if a user is included in a feature flag rollout.
+//
+// Algorithm:
+//   1. Hash(userID + flagKey + salt) → bucket (0-99)
+//   2. If bucket < rollout percentage, user is included
+//
+// Special cases:
+//   - rollout=0: Always returns false (flag disabled for all)
+//   - rollout=100: Always returns true (flag enabled for all)
+//   - userID="": Always returns false (no user context means no targeting)
+//
+// Example: rollout=25 means ~25% of users see the feature.
+// Increasing rollout from 25 to 50 will add users, never remove existing ones.
 func IsRolledOut(userID, flagKey string, rollout int32, salt string) (bool, error) {
 	if rollout < 0 || rollout > 100 {
 		return false, ErrInvalidRollout
 	}
 	if rollout == 0 {
-		return false, nil
+		return false, nil // Fast path: disabled for everyone
 	}
 	if rollout == 100 {
-		return true, nil
+		return true, nil // Fast path: enabled for everyone
 	}
 	if userID == "" {
 		return false, nil // No user context, treat as not rolled out
@@ -37,7 +53,8 @@ func IsRolledOut(userID, flagKey string, rollout int32, salt string) (bool, erro
 	return bucket < int(rollout), nil
 }
 
-// ValidateVariants checks that variant weights sum to 100 and all names are non-empty.
+// ValidateVariants checks that variant weights sum to exactly 100 and all names are non-empty and unique.
+// Returns nil if variants slice is empty (no A/B test configured).
 func ValidateVariants(variants []Variant) error {
 	if len(variants) == 0 {
 		return nil // Empty variants is valid (no A/B test)
@@ -45,27 +62,43 @@ func ValidateVariants(variants []Variant) error {
 
 	totalWeight := 0
 	seenNames := make(map[string]bool)
-	for _, v := range variants {
-		if v.Name == "" {
+	
+	for _, variant := range variants {
+		if variant.Name == "" {
 			return errors.New("variant name cannot be empty")
 		}
-		if seenNames[v.Name] {
-			return errors.New("duplicate variant name: " + v.Name)
+		if seenNames[variant.Name] {
+			return errors.New("duplicate variant name: " + variant.Name)
 		}
-		seenNames[v.Name] = true
-		if v.Weight < 0 || v.Weight > 100 {
+		seenNames[variant.Name] = true
+		
+		if variant.Weight < 0 || variant.Weight > 100 {
 			return errors.New("variant weight must be between 0 and 100")
 		}
-		totalWeight += v.Weight
+		totalWeight += variant.Weight
 	}
+	
 	if totalWeight != 100 {
 		return ErrInvalidVariantWeights
 	}
 	return nil
 }
 
-// GetVariant returns the variant name for the given user and flag based on weights.
-// Returns empty string if no variants are defined or if userID is empty.
+// GetVariant determines which A/B test variant a user is assigned to based on their bucket.
+//
+// Algorithm:
+//   1. Hash(userID + flagKey + salt) → bucket (0-99)
+//   2. Assign variant based on cumulative weight ranges
+//
+// Example: variants = [A:50, B:30, C:20]
+//   - bucket 0-49  → A
+//   - bucket 50-79 → B
+//   - bucket 80-99 → C
+//
+// Returns empty string if:
+//   - No variants defined
+//   - userID is empty (no user context)
+//   - Validation fails
 func GetVariant(userID, flagKey string, variants []Variant, salt string) (string, error) {
 	if len(variants) == 0 {
 		return "", nil
@@ -83,11 +116,11 @@ func GetVariant(userID, flagKey string, variants []Variant, salt string) (string
 	}
 
 	// Assign variant based on cumulative weights
-	cumulative := 0
-	for _, v := range variants {
-		cumulative += v.Weight
-		if bucket < cumulative {
-			return v.Name, nil
+	cumulativeWeight := 0
+	for _, variant := range variants {
+		cumulativeWeight += variant.Weight
+		if bucket < cumulativeWeight {
+			return variant.Name, nil
 		}
 	}
 
@@ -95,17 +128,21 @@ func GetVariant(userID, flagKey string, variants []Variant, salt string) (string
 	return variants[len(variants)-1].Name, nil
 }
 
-// GetVariantConfig returns the config for the variant assigned to the user.
-// Returns nil if no variants, userID is empty, or variant has no config.
+// GetVariantConfig returns the configuration for the variant assigned to the user.
+// Returns nil if:
+//   - No variants are defined
+//   - userID is empty
+//   - The assigned variant has no config
+//   - Validation fails
 func GetVariantConfig(userID, flagKey string, variants []Variant, salt string) (map[string]any, error) {
-	variant, err := GetVariant(userID, flagKey, variants, salt)
-	if err != nil || variant == "" {
+	variantName, err := GetVariant(userID, flagKey, variants, salt)
+	if err != nil || variantName == "" {
 		return nil, err
 	}
 
-	for _, v := range variants {
-		if v.Name == variant {
-			return v.Config, nil
+	for _, variant := range variants {
+		if variant.Name == variantName {
+			return variant.Config, nil
 		}
 	}
 	return nil, nil
