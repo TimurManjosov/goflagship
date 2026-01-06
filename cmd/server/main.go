@@ -35,21 +35,22 @@ func main() {
 	ctx := context.Background()
 
 	// Create store based on configuration
-	st, err := store.NewStore(ctx, cfg.StoreType, cfg.DB_DSN)
+	st, err := store.NewStore(ctx, cfg.StoreType, cfg.DatabaseDSN)
 	if err != nil {
-		log.Fatalf("store: %v", err)
+		log.Fatalf("failed to initialize store (type=%s): %v", cfg.StoreType, err)
 	}
 	defer st.Close()
 
-	// initial snapshot
+	// Load initial flag snapshot into memory
 	flags, err := st.GetAllFlags(ctx, cfg.Env)
 	if err != nil {
-		log.Fatalf("load flags: %v", err)
+		log.Fatalf("failed to load flags from store: %v", err)
 	}
-	s := snapshot.BuildFromFlags(flags)
-	snapshot.Update(s)
-	telemetry.SnapshotFlags.Set(float64(len(s.Flags)))
-	log.Printf("snapshot: %d flags, etag=%s (store_type=%s)", len(s.Flags), s.ETag, cfg.StoreType)
+	currentSnapshot := snapshot.BuildFromFlags(flags)
+	snapshot.Update(currentSnapshot)
+	telemetry.SnapshotFlags.Set(float64(len(currentSnapshot.Flags)))
+	log.Printf("snapshot loaded: %d flags, etag=%s (store=%s)", 
+		len(currentSnapshot.Flags), currentSnapshot.ETag, cfg.StoreType)
 
 	// ---- API server (:8080) ----
 	apiSrv := &http.Server{
@@ -86,16 +87,21 @@ func main() {
 		}
 	}()
 
-	// ---- graceful shutdown for both servers ----
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	// ---- Graceful shutdown for both servers ----
+	shutdownSignal := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignal, syscall.SIGINT, syscall.SIGTERM)
+	<-shutdownSignal
 
-	ctxShut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	log.Println("shutdown signal received, stopping servers...")
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
 
-	_ = apiSrv.Shutdown(ctxShut)
-	_ = metricsSrv.Shutdown(ctxShut)
+	if err := apiSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("error during API server shutdown: %v", err)
+	}
+	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("error during metrics server shutdown: %v", err)
+	}
 
-	log.Println("stopped")
+	log.Println("servers stopped successfully")
 }

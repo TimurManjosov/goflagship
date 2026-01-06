@@ -124,8 +124,8 @@ func TestLoad_AllFieldsPopulated(t *testing.T) {
 	if cfg.HTTPAddr == "" {
 		t.Error("HTTPAddr should not be empty")
 	}
-	if cfg.DB_DSN == "" {
-		t.Error("DB_DSN should not be empty")
+	if cfg.DatabaseDSN == "" {
+		t.Error("DatabaseDSN should not be empty")
 	}
 	if cfg.Env == "" {
 		t.Error("Env should not be empty")
