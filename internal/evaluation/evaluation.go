@@ -137,14 +137,22 @@ func convertVariants(variants []snapshot.Variant) []rollout.Variant {
 
 // resolveVariantAndConfig determines the variant (if any) and resolves the appropriate config.
 // This centralizes the complex logic of choosing between variant config and flag config.
-// Returns: (variantName, config) where variantName may be empty if no variants are configured.
+// 
+// Fallback behavior:
+//   - Returns ("", flag.Config) when no variants are configured
+//   - Returns ("", flag.Config) when variant assignment fails or userID is empty
+//   - Returns (variantName, variantConfig) when variant has config
+//   - Returns (variantName, flag.Config) when variant exists but has no config
+//
+// Returns: (variantName, config) where variantName may be empty if no variants are configured
+// or if variant assignment fails.
 func resolveVariantAndConfig(flag snapshot.FlagView, userID, salt string) (string, map[string]any) {
 	// No variants configured - use flag-level config
 	if len(flag.Variants) == 0 {
 		return "", flag.Config
 	}
 
-	// Convert and get variant assignment
+	// Convert once and reuse for both GetVariant and GetVariantConfig calls
 	variants := convertVariants(flag.Variants)
 	variantName, err := rollout.GetVariant(userID, flag.Key, variants, salt)
 	
@@ -154,6 +162,7 @@ func resolveVariantAndConfig(flag snapshot.FlagView, userID, salt string) (strin
 	}
 
 	// Successfully assigned to a variant - get its config
+	// Reusing already-converted variants to avoid duplicate conversion
 	variantConfig, err := rollout.GetVariantConfig(userID, flag.Key, variants, salt)
 	if err != nil {
 		// Error getting variant config - fall back to flag config

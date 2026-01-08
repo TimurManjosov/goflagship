@@ -17,7 +17,8 @@ func BucketUser(userID, flagKey, salt string) int {
 	// Combine userID, flagKey, and salt with delimiters for uniqueness
 	// Use strings.Builder to avoid intermediate string allocations in hot path
 	var builder strings.Builder
-	builder.Grow(len(userID) + len(flagKey) + len(salt) + 2) // Pre-allocate exact size needed
+	const delimiterCount = 2 // Two ':' delimiters between the three components
+	builder.Grow(len(userID) + len(flagKey) + len(salt) + delimiterCount)
 	builder.WriteString(userID)
 	builder.WriteByte(':')
 	builder.WriteString(flagKey)
