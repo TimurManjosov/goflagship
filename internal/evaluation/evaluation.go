@@ -80,9 +80,11 @@ func EvaluateFlag(flag snapshot.FlagView, ctx Context, salt string) Result {
 // EvaluateAll evaluates all flags for the given context.
 // If keys is non-empty, only the specified flags are evaluated.
 func EvaluateAll(flags map[string]snapshot.FlagView, ctx Context, salt string, keys []string) []Result {
-	results := make([]Result, 0)
-
+	// Pre-allocate slice with appropriate capacity to avoid reallocation
+	var results []Result
 	if len(keys) > 0 {
+		// When filtering by keys, allocate for requested keys (some may not exist)
+		results = make([]Result, 0, len(keys))
 		// Evaluate only specified keys
 		for _, key := range keys {
 			if flag, exists := flags[key]; exists {
@@ -91,6 +93,8 @@ func EvaluateAll(flags map[string]snapshot.FlagView, ctx Context, salt string, k
 			// Non-existent keys are silently ignored
 		}
 	} else {
+		// When evaluating all flags, allocate exact size needed
+		results = make([]Result, 0, len(flags))
 		// Evaluate all flags
 		for _, flag := range flags {
 			results = append(results, EvaluateFlag(flag, ctx, salt))
@@ -102,7 +106,8 @@ func EvaluateAll(flags map[string]snapshot.FlagView, ctx Context, salt string, k
 
 // buildTargetingContext creates a targeting.UserContext from evaluation context.
 func buildTargetingContext(ctx Context) targeting.UserContext {
-	targetCtx := make(targeting.UserContext)
+	// Pre-size map to avoid reallocation (1 for ID + attributes)
+	targetCtx := make(targeting.UserContext, len(ctx.Attributes)+1)
 
 	// Add user ID
 	if ctx.UserID != "" {
