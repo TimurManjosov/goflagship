@@ -51,26 +51,13 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build evaluation context
+	// Build evaluation context and evaluate
 	ctx := evaluation.Context{
 		UserID:     req.User.ID,
 		Attributes: req.User.Attributes,
 	}
 
-	// Load current snapshot
-	snap := snapshot.Load()
-
-	// Evaluate flags
-	results := evaluation.EvaluateAll(snap.Flags, ctx, snap.RolloutSalt, req.Keys)
-
-	// Build response
-	resp := evaluateResponse{
-		Flags:       results,
-		ETag:        snap.ETag,
-		EvaluatedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-
-	writeJSON(w, http.StatusOK, resp)
+	s.evaluateAndRespond(w, ctx, req.Keys)
 }
 
 // handleEvaluateGET handles GET /v1/flags/evaluate with query parameters
@@ -108,19 +95,25 @@ func (s *Server) handleEvaluateGET(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build evaluation context
+	// Build evaluation context and evaluate
 	ctx := evaluation.Context{
 		UserID:     userID,
 		Attributes: attributes,
 	}
 
+	s.evaluateAndRespond(w, ctx, keys)
+}
+
+// evaluateAndRespond performs flag evaluation and writes the JSON response.
+// This is shared by both POST and GET evaluation handlers to avoid duplication.
+func (s *Server) evaluateAndRespond(w http.ResponseWriter, ctx evaluation.Context, keys []string) {
 	// Load current snapshot
 	snap := snapshot.Load()
 
 	// Evaluate flags
 	results := evaluation.EvaluateAll(snap.Flags, ctx, snap.RolloutSalt, keys)
 
-	// Build response
+	// Build and write response
 	resp := evaluateResponse{
 		Flags:       results,
 		ETag:        snap.ETag,

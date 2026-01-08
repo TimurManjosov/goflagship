@@ -2,6 +2,8 @@
 package rollout
 
 import (
+	"strings"
+
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -13,7 +15,15 @@ func BucketUser(userID, flagKey, salt string) int {
 		return -1 // Invalid: no user context
 	}
 	// Combine userID, flagKey, and salt with delimiters for uniqueness
-	key := userID + ":" + flagKey + ":" + salt
-	hash := xxhash.Sum64String(key)
+	// Use strings.Builder to avoid intermediate string allocations in hot path
+	var builder strings.Builder
+	builder.Grow(len(userID) + len(flagKey) + len(salt) + 2) // Pre-allocate exact size needed
+	builder.WriteString(userID)
+	builder.WriteByte(':')
+	builder.WriteString(flagKey)
+	builder.WriteByte(':')
+	builder.WriteString(salt)
+	
+	hash := xxhash.Sum64String(builder.String())
 	return int(hash % 100) // Returns 0-99
 }

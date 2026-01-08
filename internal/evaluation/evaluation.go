@@ -71,35 +71,8 @@ func EvaluateFlag(flag snapshot.FlagView, ctx Context, salt string) Result {
 	// Flag is enabled for this user
 	result.Enabled = true
 
-	// Step 4: Determine variant (if configured)
-	if len(flag.Variants) > 0 {
-		// Convert snapshot.Variant to rollout.Variant
-		variants := convertVariants(flag.Variants)
-
-		variantName, err := rollout.GetVariant(ctx.UserID, flag.Key, variants, salt)
-		if err == nil && variantName != "" {
-			result.Variant = variantName
-
-			// Get variant-specific config
-			// Note: We've already validated variants work in GetVariant above,
-			// so GetVariantConfig should succeed. Fall back to flag config on error.
-			variantConfig, err := rollout.GetVariantConfig(ctx.UserID, flag.Key, variants, salt)
-			if err != nil {
-				// Fall back to flag-level config on error
-				if flag.Config != nil {
-					result.Config = flag.Config
-				}
-			} else if variantConfig != nil {
-				result.Config = variantConfig
-			} else if flag.Config != nil {
-				// Fall back to flag-level config if no variant config
-				result.Config = flag.Config
-			}
-		}
-	} else if flag.Config != nil {
-		// No variants, use flag-level config
-		result.Config = flag.Config
-	}
+	// Step 4: Determine variant and resolve config
+	result.Variant, result.Config = resolveVariantAndConfig(flag, ctx.UserID, salt)
 
 	return result
 }
@@ -155,4 +128,36 @@ func convertVariants(variants []snapshot.Variant) []rollout.Variant {
 		}
 	}
 	return result
+}
+
+// resolveVariantAndConfig determines the variant (if any) and resolves the appropriate config.
+// This centralizes the complex logic of choosing between variant config and flag config.
+// Returns: (variantName, config) where variantName may be empty if no variants are configured.
+func resolveVariantAndConfig(flag snapshot.FlagView, userID, salt string) (string, map[string]any) {
+	// No variants configured - use flag-level config
+	if len(flag.Variants) == 0 {
+		return "", flag.Config
+	}
+
+	// Convert and get variant assignment
+	variants := convertVariants(flag.Variants)
+	variantName, err := rollout.GetVariant(userID, flag.Key, variants, salt)
+	
+	// If variant assignment failed or empty, fall back to flag config
+	if err != nil || variantName == "" {
+		return "", flag.Config
+	}
+
+	// Successfully assigned to a variant - get its config
+	variantConfig, err := rollout.GetVariantConfig(userID, flag.Key, variants, salt)
+	if err != nil {
+		// Error getting variant config - fall back to flag config
+		return variantName, flag.Config
+	}
+
+	// Return variant config if present, otherwise fall back to flag config
+	if variantConfig != nil {
+		return variantName, variantConfig
+	}
+	return variantName, flag.Config
 }
