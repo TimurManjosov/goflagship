@@ -132,14 +132,14 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	// Log the action (using new audit service)
 	afterState := map[string]any{
-		"id":       uuidToString(apiKey.ID),
-		"name":     apiKey.Name,
-		"role":     string(apiKey.Role),
-		"enabled":  apiKey.Enabled,
-		"created_at": apiKey.CreatedAt.Time.Format(time.RFC3339),
+		"id":         uuidToString(apiKey.ID),
+		"name":       apiKey.Name,
+		"role":       string(apiKey.Role),
+		"enabled":    apiKey.Enabled,
+		"created_at": formatTimestamp(apiKey.CreatedAt),
 	}
 	if apiKey.ExpiresAt.Valid {
-		afterState["expires_at"] = apiKey.ExpiresAt.Time.Format(time.RFC3339)
+		afterState["expires_at"] = formatTimestamp(apiKey.ExpiresAt)
 	}
 	s.auditLog(r, audit.ActionCreated, audit.ResourceTypeAPIKey, uuidToString(apiKey.ID), "", nil, afterState, nil, audit.StatusSuccess, "")
 
@@ -149,11 +149,8 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		Name:      apiKey.Name,
 		Key:       key, // Only shown once!
 		Role:      string(apiKey.Role),
-		CreatedAt: apiKey.CreatedAt.Time.Format(time.RFC3339),
-	}
-	if apiKey.ExpiresAt.Valid {
-		expiresAtStr := apiKey.ExpiresAt.Time.Format(time.RFC3339)
-		resp.ExpiresAt = &expiresAtStr
+		CreatedAt: formatTimestamp(apiKey.CreatedAt),
+		ExpiresAt: formatOptionalTimestamp(apiKey.ExpiresAt),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -180,19 +177,13 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	for _, key := range keys {
 		info := keyInfo{
-			ID:        uuidToString(key.ID),
-			Name:      key.Name,
-			Role:      string(key.Role),
-			Enabled:   key.Enabled,
-			CreatedAt: key.CreatedAt.Time.Format(time.RFC3339),
-		}
-		if key.LastUsedAt.Valid {
-			lastUsedStr := key.LastUsedAt.Time.Format(time.RFC3339)
-			info.LastUsedAt = &lastUsedStr
-		}
-		if key.ExpiresAt.Valid {
-			expiresAtStr := key.ExpiresAt.Time.Format(time.RFC3339)
-			info.ExpiresAt = &expiresAtStr
+			ID:         uuidToString(key.ID),
+			Name:       key.Name,
+			Role:       string(key.Role),
+			Enabled:    key.Enabled,
+			CreatedAt:  formatTimestamp(key.CreatedAt),
+			LastUsedAt: formatOptionalTimestamp(key.LastUsedAt),
+			ExpiresAt:  formatOptionalTimestamp(key.ExpiresAt),
 		}
 		resp.Keys = append(resp.Keys, info)
 	}
@@ -410,7 +401,7 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	for _, log := range logs {
 		info := auditLogInfo{
 			ID:        uuidToString(log.ID),
-			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
+			Timestamp: formatTimestamp(log.Timestamp),
 			Action:    log.Action,
 			IPAddress: log.IpAddress,
 			UserAgent: log.UserAgent,
@@ -564,7 +555,7 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 	for _, log := range logs {
 		info := auditLogInfo{
 			ID:        uuidToString(log.ID),
-			Timestamp: log.Timestamp.Time.Format(time.RFC3339),
+			Timestamp: formatTimestamp(log.Timestamp),
 			Action:    log.Action,
 			IPAddress: log.IpAddress,
 			UserAgent: log.UserAgent,

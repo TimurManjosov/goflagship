@@ -592,6 +592,25 @@ func formatUUID(uuid pgtype.UUID) string {
 		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
 }
 
+// formatTimestamp formats a pgtype.Timestamptz to RFC3339 string.
+// Returns an empty string if the timestamp is not valid.
+func formatTimestamp(ts pgtype.Timestamptz) string {
+	if !ts.Valid {
+		return ""
+	}
+	return ts.Time.Format(time.RFC3339)
+}
+
+// formatOptionalTimestamp formats a pgtype.Timestamptz to an optional RFC3339 string pointer.
+// Returns nil if the timestamp is not valid, otherwise returns a pointer to the formatted string.
+func formatOptionalTimestamp(ts pgtype.Timestamptz) *string {
+	if !ts.Valid {
+		return nil
+	}
+	formatted := ts.Time.Format(time.RFC3339)
+	return &formatted
+}
+
 // dispatchWebhookEvent dispatches a webhook event for flag changes
 func (s *Server) dispatchWebhookEvent(r *http.Request, isCreate bool, key, env string, beforeState, afterState, changes map[string]any) {
 	if s.webhookDispatcher == nil {
