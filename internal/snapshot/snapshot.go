@@ -47,20 +47,67 @@ type Snapshot struct {
 	RolloutSalt string              `json:"rolloutSalt,omitempty"`  // Salt for deterministic user bucketing
 }
 
+// Package-level state:
+// This package uses package-level global variables for performance and simplicity.
+// These variables are thread-safe and should be initialized once at application startup.
 var (
-	current     unsafe.Pointer // Atomic pointer to current *Snapshot
-	rolloutSalt string         // Global rollout salt configured at startup
+	// current holds an atomic pointer to the current snapshot.
+	// Thread-safe: Modified only via atomic operations (atomic.StorePointer/LoadPointer).
+	// Initialized: Via Update() function, typically called after database load.
+	current unsafe.Pointer // Atomic pointer to current *Snapshot
+
+	// rolloutSalt is a stable secret used for deterministic user bucketing.
+	// Thread-safe: Set once at startup via SetRolloutSalt, then read-only.
+	// Initialized: Must be set via SetRolloutSalt() before first evaluation.
+	// Impact: Changing this value will cause all users to be re-bucketed.
+	//
+	// Lifecycle:
+	//   1. Application startup: SetRolloutSalt(os.Getenv("ROLLOUT_SALT"))
+	//   2. Runtime: Value is read but never modified
+	//   3. Application shutdown: No cleanup needed (read-only after init)
+	rolloutSalt string // Global rollout salt configured at startup
 )
 
 // SetRolloutSalt configures the global rollout salt used for deterministic user bucketing.
-// This should be called once at application startup with a stable value.
-// Changing the salt will cause all users to be re-bucketed into different rollout groups.
+//
+// This MUST be called once at application startup with a stable value before any flag
+// evaluations occur. The salt ensures consistent user bucketing across server instances
+// and restarts.
+//
+// Thread-safety: This function is NOT thread-safe. It should only be called once
+// during application initialization before any concurrent access begins.
+//
+// Warning: Changing the salt after users have been bucketed will cause all users to be
+// re-bucketed into potentially different rollout groups. This can cause feature visibility
+// to change unexpectedly for end users.
+//
+// Example:
+//   func main() {
+//       salt := os.Getenv("ROLLOUT_SALT")
+//       if salt == "" {
+//           log.Fatal("ROLLOUT_SALT must be set")
+//       }
+//       snapshot.SetRolloutSalt(salt)
+//       // ... rest of application setup
+//   }
 func SetRolloutSalt(salt string) {
 	rolloutSalt = salt
 }
 
 // Load atomically reads the current snapshot from memory.
-// Returns an empty snapshot if no snapshot has been stored yet.
+//
+// Thread-safety: This function is thread-safe and can be called concurrently from
+// multiple goroutines. It uses atomic operations to read the snapshot pointer.
+//
+// Returns:
+//   - Current snapshot if one has been stored via Update()
+//   - Empty snapshot with current rolloutSalt if no snapshot exists yet
+//
+// Performance: O(1) atomic pointer load - extremely fast, suitable for hot paths.
+//
+// Example:
+//   snap := snapshot.Load()
+//   results := evaluation.EvaluateAll(snap.Flags, ctx, snap.RolloutSalt, keys)
 func Load() *Snapshot {
 	pointer := atomic.LoadPointer(&current)
 	if pointer == nil {
@@ -167,7 +214,25 @@ func computeETag(flagMap map[string]FlagView) string {
 }
 
 // Update atomically replaces the current snapshot and notifies SSE listeners.
-// This is the only way to update the global snapshot after initialization.
+//
+// Thread-safety: This function is thread-safe and can be called from any goroutine.
+// It uses atomic operations to store the new snapshot pointer.
+//
+// Side effects:
+//   - Atomically updates the global 'current' pointer
+//   - Notifies all SSE subscribers of the change (publishes ETag)
+//
+// This is the primary way to update the global snapshot after initialization.
+// Typically called:
+//   1. At application startup after loading flags from database
+//   2. After flag mutations (create, update, delete operations)
+//
+// Performance: O(1) atomic pointer store + SSE notification
+//
+// Example:
+//   flags, _ := store.GetAllFlags(ctx, env)
+//   snap := snapshot.BuildFromFlags(flags)
+//   snapshot.Update(snap)  // Makes new snapshot visible globally
 func Update(newSnapshot *Snapshot) {
 	storeSnapshot(newSnapshot)
 	publishUpdate(newSnapshot.ETag) // Notify SSE listeners of the change
