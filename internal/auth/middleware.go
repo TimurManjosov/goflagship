@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/TimurManjosov/goflagship/internal/db/gen"
@@ -35,6 +36,7 @@ type Authenticator struct {
 	keyStore       KeyStore
 	legacyAdminKey string // For backward compatibility
 	updateChan     chan lastUsedUpdate
+	closed         int32 // atomic flag to prevent double-close
 }
 
 // NewAuthenticator creates a new Authenticator with a background worker
@@ -70,13 +72,13 @@ func (a *Authenticator) lastUsedWorker() {
 // This causes the background worker to exit after processing any pending updates.
 // After Close is called, the Authenticator should not be used for new authentication requests.
 //
-// It's safe to call Close multiple times - subsequent calls are no-ops.
+// Close is safe to call multiple times - subsequent calls are no-ops.
 func (a *Authenticator) Close() error {
+	// Atomically check if already closed
+	if !atomic.CompareAndSwapInt32(&a.closed, 0, 1) {
+		return nil // Already closed
+	}
 	// Close channel to signal worker to stop
-	// Recover from panic if channel is already closed
-	defer func() {
-		_ = recover()
-	}()
 	close(a.updateChan)
 	return nil
 }

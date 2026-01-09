@@ -419,7 +419,7 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, action, audit.ResourceTypeFlag, req.Key, env, beforeState, afterState, changes, audit.StatusSuccess, "")
 
 	// Dispatch webhook event
-	s.dispatchWebhookEvent(r, isCreate, req.Key, env, beforeState, afterState, changes)
+	s.dispatchWebhookEvent(r, req.Key, env, beforeState, afterState, changes)
 
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -470,7 +470,7 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeFlag, key, env, beforeState, nil, nil, audit.StatusSuccess, "")
 
 	// Dispatch webhook event for deletion
-	s.dispatchWebhookEvent(r, false, key, env, beforeState, nil, nil)
+	s.dispatchWebhookEvent(r, key, env, beforeState, nil, nil)
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -510,21 +510,8 @@ func (s *Server) authAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// logAudit logs an audit event using the EventBuilder pattern.
-// This is a convenience wrapper that returns a builder pre-configured with request context.
-// It automatically returns early if audit service is unavailable.
-//
-// Usage examples:
-//   - Success: s.logAudit(r).ForResource(audit.ResourceTypeFlag, key).WithAction(audit.ActionCreated).WithEnvironment(env).Build()
-//   - Failure: s.logAudit(r).ForResource(audit.ResourceTypeFlag, key).WithAction(audit.ActionUpdated).Failure("error message").Build()
-func (s *Server) logAudit(r *http.Request) *audit.EventBuilder {
-	// Return a no-op builder if audit service is unavailable
-	// The builder will still work but the Log call will be a no-op
-	return audit.NewEventBuilder(r)
-}
-
 // auditLog logs an audit event (convenience method for backward compatibility during migration).
-// Consider using logAudit() with the builder pattern for new code.
+// Consider using audit.NewEventBuilder(r) directly with the builder pattern for new code.
 func (s *Server) auditLog(r *http.Request, action, resourceType, resourceID, environment string, beforeState, afterState, changes map[string]any, status, errorMsg string) {
 	if s.auditService == nil {
 		return // No audit service available
@@ -548,7 +535,7 @@ func (s *Server) auditLog(r *http.Request, action, resourceType, resourceID, env
 
 // dispatchWebhookEvent dispatches a webhook event for flag changes using the EventBuilder pattern.
 // Event type (created/updated/deleted) is automatically determined based on before/after states.
-func (s *Server) dispatchWebhookEvent(r *http.Request, isCreate bool, key, env string, beforeState, afterState, changes map[string]any) {
+func (s *Server) dispatchWebhookEvent(r *http.Request, key, env string, beforeState, afterState, changes map[string]any) {
 	if s.webhookDispatcher == nil {
 		return // No webhook dispatcher available
 	}

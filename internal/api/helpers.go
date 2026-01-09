@@ -32,6 +32,9 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 // formatUUID formats a pgtype.UUID to a standard UUID string.
 // Returns an empty string if the UUID is not valid.
 //
+// Note: This implementation is duplicated in audit/service.go and webhook/builder.go
+// to avoid import cycles. All implementations use the same format for consistency.
+//
 // Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 func formatUUID(uuid pgtype.UUID) string {
 	if !uuid.Valid {

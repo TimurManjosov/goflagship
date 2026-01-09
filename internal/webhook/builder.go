@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -60,6 +61,7 @@ func (b *EventBuilder) ForFlag(key, env string) *EventBuilder {
 //   - before=nil, after!=nil → created
 //   - before!=nil, after=nil → deleted
 //   - both non-nil → updated
+//   - both nil → no event type set (caller should set explicitly if needed)
 func (b *EventBuilder) WithStates(before, after map[string]any) *EventBuilder {
 	b.event.Data.Before = before
 	b.event.Data.After = after
@@ -69,9 +71,10 @@ func (b *EventBuilder) WithStates(before, after map[string]any) *EventBuilder {
 		b.event.Type = EventFlagCreated
 	} else if before != nil && after == nil {
 		b.event.Type = EventFlagDeleted
-	} else {
+	} else if before != nil && after != nil {
 		b.event.Type = EventFlagUpdated
 	}
+	// If both are nil, don't set any event type - let caller handle this edge case
 	
 	return b
 }
@@ -89,39 +92,12 @@ func (b *EventBuilder) Build() Event {
 }
 
 // formatUUID formats a pgtype.UUID to string.
-// This is a helper to avoid import cycles with the api package.
+// Note: This is duplicated in api/helpers.go and audit/service.go to avoid import cycles.
+// Uses fmt.Sprintf for consistency with other packages.
 func formatUUID(uuid pgtype.UUID) string {
 	if !uuid.Valid {
 		return ""
 	}
-	// Format as standard UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-	return formatUUIDBytes(uuid.Bytes)
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
 }
-
-// formatUUIDBytes formats UUID bytes to string.
-func formatUUIDBytes(bytes [16]byte) string {
-	return string([]byte{
-		hexChars[bytes[0]>>4], hexChars[bytes[0]&0xf],
-		hexChars[bytes[1]>>4], hexChars[bytes[1]&0xf],
-		hexChars[bytes[2]>>4], hexChars[bytes[2]&0xf],
-		hexChars[bytes[3]>>4], hexChars[bytes[3]&0xf],
-		'-',
-		hexChars[bytes[4]>>4], hexChars[bytes[4]&0xf],
-		hexChars[bytes[5]>>4], hexChars[bytes[5]&0xf],
-		'-',
-		hexChars[bytes[6]>>4], hexChars[bytes[6]&0xf],
-		hexChars[bytes[7]>>4], hexChars[bytes[7]&0xf],
-		'-',
-		hexChars[bytes[8]>>4], hexChars[bytes[8]&0xf],
-		hexChars[bytes[9]>>4], hexChars[bytes[9]&0xf],
-		'-',
-		hexChars[bytes[10]>>4], hexChars[bytes[10]&0xf],
-		hexChars[bytes[11]>>4], hexChars[bytes[11]&0xf],
-		hexChars[bytes[12]>>4], hexChars[bytes[12]&0xf],
-		hexChars[bytes[13]>>4], hexChars[bytes[13]&0xf],
-		hexChars[bytes[14]>>4], hexChars[bytes[14]&0xf],
-		hexChars[bytes[15]>>4], hexChars[bytes[15]&0xf],
-	})
-}
-
-var hexChars = []byte("0123456789abcdef")

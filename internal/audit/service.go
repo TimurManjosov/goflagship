@@ -340,7 +340,9 @@ func ComputeChanges(before, after map[string]any) map[string]any {
 	return changes
 }
 
-// Helper to format UUID
+// formatUUID formats a pgtype.UUID to string.
+// Note: This is duplicated in api/helpers.go and webhook/builder.go to avoid import cycles.
+// All implementations use the same fmt.Sprintf format for consistency.
 func formatUUID(uuid pgtype.UUID) string {
 	if !uuid.Valid {
 		return ""

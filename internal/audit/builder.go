@@ -36,10 +36,14 @@ func NewEventBuilder(r *http.Request) *EventBuilder {
 	
 	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
 		idStr := formatUUID(apiKeyID)
+		display := "api_key:" + idStr
+		if len(idStr) >= 8 {
+			display = "api_key:" + idStr[:8]
+		}
 		actor = Actor{
 			Kind:    ActorKindAPIKey,
 			ID:      &idStr,
-			Display: "api_key:" + idStr[:8],
+			Display: display,
 		}
 	}
 
