@@ -111,10 +111,9 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the key in database
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		InternalError(w, r, "Database store not available")
-		return
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return // Error already written to response
 	}
 
 	apiKey, err := pgStore.CreateAPIKey(r.Context(), dbgen.CreateAPIKeyParams{
@@ -158,10 +157,9 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // handleListAPIKeys lists all API keys (admin+)
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		InternalError(w, r, "Database store not available")
-		return
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return // Error already written to response
 	}
 
 	keys, err := pgStore.ListAPIKeys(r.Context())
@@ -209,10 +207,9 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		InternalError(w, r, "Database store not available")
-		return
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return // Error already written to response
 	}
 
 	// Capture before state for audit
@@ -342,10 +339,9 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		InternalError(w, r, "Database store not available")
-		return
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return // Error already written to response
 	}
 
 	// Create filter params with all query parameters
@@ -526,10 +522,9 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pgStore, ok := s.store.(PostgresStoreInterface)
-	if !ok {
-		InternalError(w, r, "Database store not available")
-		return
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return // Error already written to response
 	}
 
 	// Fetch all matching logs (no pagination for export)

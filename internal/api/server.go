@@ -92,6 +92,46 @@ func getQueriesFromStore(pgStore PostgresStoreInterface) *dbgen.Queries {
 	return nil
 }
 
+// requirePostgresStore ensures the store implements PostgresStoreInterface and returns it.
+// If the store doesn't support PostgreSQL operations, it writes an internal error response and returns nil.
+// This is a convenience helper to reduce repeated type assertions and error handling.
+//
+// Usage:
+//   pgStore := s.requirePostgresStore(w, r)
+//   if pgStore == nil {
+//       return // Error already written to response
+//   }
+//   // Use pgStore...
+func (s *Server) requirePostgresStore(w http.ResponseWriter, r *http.Request) PostgresStoreInterface {
+	if pgStore, ok := s.store.(PostgresStoreInterface); ok {
+		return pgStore
+	}
+	InternalError(w, r, "Database store not available")
+	return nil
+}
+
+// requireQueries extracts database queries from the store.
+// If queries are not available, it writes an internal error response and returns nil.
+// This is a convenience helper for handlers that need direct database access.
+//
+// Usage:
+//   queries := s.requireQueries(w, r)
+//   if queries == nil {
+//       return // Error already written to response
+//   }
+//   // Use queries...
+func (s *Server) requireQueries(w http.ResponseWriter, r *http.Request) *dbgen.Queries {
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return nil // Error already written
+	}
+	queries := getQueriesFromStore(pgStore)
+	if queries == nil {
+		InternalError(w, r, "Database queries not available")
+	}
+	return queries
+}
+
 func (s *Server) Router() http.Handler {
 	// inside (s *Server) Router():
 	r := chi.NewRouter()
