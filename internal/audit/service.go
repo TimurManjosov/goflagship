@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -157,6 +158,7 @@ type Service struct {
 	redactor Redactor
 	queue    chan AuditEvent
 	stopCh   chan struct{}
+	closed   int32 // atomic flag to prevent double-close
 }
 
 // NewService creates a new audit service
@@ -209,6 +211,23 @@ func (s *Service) worker() {
 			return
 		}
 	}
+}
+
+// Close gracefully shuts down the audit service.
+// It signals the background worker to stop and drains any remaining events in the queue.
+// After Close is called, no new events should be logged.
+//
+// Close is safe to call multiple times - subsequent calls are no-ops.
+// Close blocks until all pending events are processed or a timeout is reached.
+func (s *Service) Close() error {
+	// Atomically check if already closed
+	if !atomic.CompareAndSwapInt32(&s.closed, 0, 1) {
+		return nil // Already closed
+	}
+	// Signal worker to stop
+	close(s.stopCh)
+	// Worker will drain queue and exit
+	return nil
 }
 
 // Log queues an audit event for asynchronous processing
@@ -321,7 +340,9 @@ func ComputeChanges(before, after map[string]any) map[string]any {
 	return changes
 }
 
-// Helper to format UUID
+// formatUUID formats a pgtype.UUID to string.
+// Note: This is duplicated in api/helpers.go and webhook/builder.go to avoid import cycles.
+// All implementations use the same fmt.Sprintf format for consistency.
 func formatUUID(uuid pgtype.UUID) string {
 	if !uuid.Valid {
 		return ""

@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
@@ -37,6 +38,7 @@ type Dispatcher struct {
 	client  *http.Client
 	queue   chan Event
 	done    chan struct{}
+	closed  int32 // atomic flag to prevent double-close
 }
 
 // NewDispatcher creates a new webhook dispatcher
@@ -57,10 +59,26 @@ func (d *Dispatcher) Start() {
 	go d.worker()
 }
 
-// Stop stops the dispatcher and waits for pending events to be processed
+// Stop stops the dispatcher and waits for pending events to be processed.
+// Deprecated: Use Close() instead for consistent lifecycle management.
 func (d *Dispatcher) Stop() {
+	_ = d.Close()
+}
+
+// Close gracefully shuts down the webhook dispatcher.
+// It closes the event queue and waits for all pending deliveries to complete.
+// After Close is called, no new events should be dispatched.
+//
+// Close is safe to call multiple times - subsequent calls are no-ops.
+// Close implements the io.Closer interface for consistent resource management.
+func (d *Dispatcher) Close() error {
+	// Atomically check if already closed
+	if !atomic.CompareAndSwapInt32(&d.closed, 0, 1) {
+		return nil // Already closed
+	}
 	close(d.queue)
 	<-d.done
+	return nil
 }
 
 // Dispatch queues an event for webhook delivery

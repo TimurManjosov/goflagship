@@ -114,10 +114,9 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get queries from store
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	// Prepare parameters
@@ -160,10 +159,9 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 
 // handleListWebhooks lists all webhooks
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	webhooks, err := queries.ListWebhooks(r.Context())
@@ -194,10 +192,9 @@ func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	wh, err := queries.GetWebhook(r.Context(), webhookID)
@@ -242,10 +239,9 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	// Prepare parameters
@@ -305,10 +301,9 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	if err := queries.DeleteWebhook(r.Context(), webhookID); err != nil {
@@ -349,10 +344,9 @@ func (s *Server) handleListWebhookDeliveries(w http.ResponseWriter, r *http.Requ
 
 	offset := (page - 1) * limit
 
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	// Get deliveries
@@ -404,10 +398,9 @@ func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get webhook to verify it exists
-	queries := s.getQueriesFromStore()
+	queries := s.requireQueries(w, r)
 	if queries == nil {
-		InternalError(w, r, "Database queries not available")
-		return
+		return // Error already written to response
 	}
 
 	wh, err := queries.GetWebhook(r.Context(), webhookID)
@@ -502,12 +495,4 @@ func deliveryToResponse(d dbgen.WebhookDelivery) WebhookDeliveryResponse {
 	}
 
 	return resp
-}
-
-// getQueriesFromStore extracts *dbgen.Queries from the store
-func (s *Server) getQueriesFromStore() *dbgen.Queries {
-	if pgStore, ok := s.store.(PostgresStoreInterface); ok {
-		return getQueriesFromStore(pgStore)
-	}
-	return nil
 }

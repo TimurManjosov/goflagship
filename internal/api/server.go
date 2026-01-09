@@ -22,7 +22,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
@@ -90,6 +89,46 @@ func getQueriesFromStore(pgStore PostgresStoreInterface) *dbgen.Queries {
 	}
 	// If we can't get queries, audit service will be nil and we'll skip audit logging
 	return nil
+}
+
+// requirePostgresStore ensures the store implements PostgresStoreInterface and returns it.
+// If the store doesn't support PostgreSQL operations, it writes an internal error response and returns nil.
+// This is a convenience helper to reduce repeated type assertions and error handling.
+//
+// Usage:
+//   pgStore := s.requirePostgresStore(w, r)
+//   if pgStore == nil {
+//       return // Error already written to response
+//   }
+//   // Use pgStore...
+func (s *Server) requirePostgresStore(w http.ResponseWriter, r *http.Request) PostgresStoreInterface {
+	if pgStore, ok := s.store.(PostgresStoreInterface); ok {
+		return pgStore
+	}
+	InternalError(w, r, "Database store not available")
+	return nil
+}
+
+// requireQueries extracts database queries from the store.
+// If queries are not available, it writes an internal error response and returns nil.
+// This is a convenience helper for handlers that need direct database access.
+//
+// Usage:
+//   queries := s.requireQueries(w, r)
+//   if queries == nil {
+//       return // Error already written to response
+//   }
+//   // Use queries...
+func (s *Server) requireQueries(w http.ResponseWriter, r *http.Request) *dbgen.Queries {
+	pgStore := s.requirePostgresStore(w, r)
+	if pgStore == nil {
+		return nil // Error already written
+	}
+	queries := getQueriesFromStore(pgStore)
+	if queries == nil {
+		InternalError(w, r, "Database queries not available")
+	}
+	return queries
 }
 
 func (s *Server) Router() http.Handler {
@@ -380,7 +419,7 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, action, audit.ResourceTypeFlag, req.Key, env, beforeState, afterState, changes, audit.StatusSuccess, "")
 
 	// Dispatch webhook event
-	s.dispatchWebhookEvent(r, isCreate, req.Key, env, beforeState, afterState, changes)
+	s.dispatchWebhookEvent(r, req.Key, env, beforeState, afterState, changes)
 
 	// respond with new ETag
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -431,7 +470,7 @@ func (s *Server) handleDeleteFlag(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, audit.ActionDeleted, audit.ResourceTypeFlag, key, env, beforeState, nil, nil, audit.StatusSuccess, "")
 
 	// Dispatch webhook event for deletion
-	s.dispatchWebhookEvent(r, false, key, env, beforeState, nil, nil)
+	s.dispatchWebhookEvent(r, key, env, beforeState, nil, nil)
 
 	// Respond with new ETag (idempotent: always returns success)
 	writeJSON(w, http.StatusOK, upsertResponse{
@@ -471,188 +510,43 @@ func (s *Server) authAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, map[string]any{
-		"error":   http.StatusText(code),
-		"message": msg,
-	})
-}
-
-// auditLog logs an audit event using the new audit service
+// auditLog logs an audit event (convenience method for backward compatibility during migration).
+// Consider using audit.NewEventBuilder(r) directly with the builder pattern for new code.
 func (s *Server) auditLog(r *http.Request, action, resourceType, resourceID, environment string, beforeState, afterState, changes map[string]any, status, errorMsg string) {
 	if s.auditService == nil {
 		return // No audit service available
 	}
 
-	// Extract actor from context
-	actor := audit.Actor{
-		Kind:    audit.ActorKindSystem,
-		Display: "system",
-	}
-	
-	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
-		idStr := formatUUID(apiKeyID)
-		actor = audit.Actor{
-			Kind:    audit.ActorKindAPIKey,
-			ID:      &idStr,
-			Display: fmt.Sprintf("api_key:%s", idStr[:8]),
-		}
+	builder := audit.NewEventBuilder(r).
+		ForResource(resourceType, resourceID).
+		WithAction(action).
+		WithEnvironment(environment).
+		WithBeforeState(beforeState).
+		WithAfterState(afterState).
+		WithChanges(changes)
+
+	if status == audit.StatusFailure && errorMsg != "" {
+		builder = builder.Failure(errorMsg)
 	}
 
-	// Build audit event
-	event := audit.AuditEvent{
-		RequestID:    middleware.GetReqID(r.Context()),
-		Actor:        actor,
-		Source: audit.Source{
-			IPAddress: auth.GetIPAddress(r),
-			UserAgent: r.UserAgent(),
-		},
-		Action:       action,
-		ResourceType: resourceType,
-		ResourceID:   resourceID,
-		Status:       status,
-	}
-
-	if environment != "" {
-		event.Environment = &environment
-	}
-
-	if beforeState != nil {
-		event.BeforeState = beforeState
-	}
-
-	if afterState != nil {
-		event.AfterState = afterState
-	}
-
-	if changes != nil {
-		event.Changes = changes
-	}
-
-	if errorMsg != "" {
-		event.ErrorMessage = &errorMsg
-	}
-
-	// Log asynchronously
+	event := builder.Build()
 	s.auditService.Log(event)
 }
 
-// flagToMap converts a store.Flag to a map for audit logging
-func flagToMap(flag *store.Flag) map[string]any {
-	if flag == nil {
-		return nil
-	}
-
-	m := map[string]any{
-		"key":         flag.Key,
-		"description": flag.Description,
-		"enabled":     flag.Enabled,
-		"rollout":     flag.Rollout,
-		"env":         flag.Env,
-		"updated_at":  flag.UpdatedAt.Format(time.RFC3339),
-	}
-
-	if flag.Expression != nil {
-		m["expression"] = *flag.Expression
-	}
-
-	if flag.Config != nil {
-		m["config"] = flag.Config
-	}
-
-	if len(flag.Variants) > 0 {
-		variants := make([]map[string]any, len(flag.Variants))
-		for i, v := range flag.Variants {
-			variants[i] = map[string]any{
-				"name":   v.Name,
-				"weight": v.Weight,
-			}
-			if v.Config != nil {
-				variants[i]["config"] = v.Config
-			}
-		}
-		m["variants"] = variants
-	}
-
-	return m
-}
-
-// formatUUID formats a pgtype.UUID to string
-func formatUUID(uuid pgtype.UUID) string {
-	if !uuid.Valid {
-		return ""
-	}
-	return fmt.Sprintf("%x-%x-%x-%x-%x",
-		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
-}
-
-// formatTimestamp formats a pgtype.Timestamptz to RFC3339 string.
-// Returns an empty string if the timestamp is not valid.
-func formatTimestamp(ts pgtype.Timestamptz) string {
-	if !ts.Valid {
-		return ""
-	}
-	return ts.Time.Format(time.RFC3339)
-}
-
-// formatOptionalTimestamp formats a pgtype.Timestamptz to an optional RFC3339 string pointer.
-// Returns nil if the timestamp is not valid, otherwise returns a pointer to the formatted string.
-func formatOptionalTimestamp(ts pgtype.Timestamptz) *string {
-	if !ts.Valid {
-		return nil
-	}
-	formatted := ts.Time.Format(time.RFC3339)
-	return &formatted
-}
-
-// dispatchWebhookEvent dispatches a webhook event for flag changes
-func (s *Server) dispatchWebhookEvent(r *http.Request, isCreate bool, key, env string, beforeState, afterState, changes map[string]any) {
+// dispatchWebhookEvent dispatches a webhook event for flag changes using the EventBuilder pattern.
+// Event type (created/updated/deleted) is automatically determined based on before/after states.
+func (s *Server) dispatchWebhookEvent(r *http.Request, key, env string, beforeState, afterState, changes map[string]any) {
 	if s.webhookDispatcher == nil {
 		return // No webhook dispatcher available
 	}
 
-	// Determine event type
-	var eventType string
-	if beforeState == nil && afterState != nil {
-		eventType = webhook.EventFlagCreated
-	} else if beforeState != nil && afterState == nil {
-		eventType = webhook.EventFlagDeleted
-	} else {
-		eventType = webhook.EventFlagUpdated
-	}
-
-	// Build metadata
-	metadata := webhook.Metadata{
-		RequestID: middleware.GetReqID(r.Context()),
-		IPAddress: auth.GetIPAddress(r),
-	}
-	
-	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
-		metadata.APIKeyID = formatUUID(apiKeyID)
-	}
-
-	// Create and dispatch event
-	event := webhook.Event{
-		Type:        eventType,
-		Timestamp:   time.Now(),
-		Environment: env,
-		Resource: webhook.Resource{
-			Type: "flag",
-			Key:  key,
-		},
-		Data: webhook.EventData{
-			Before:  beforeState,
-			After:   afterState,
-			Changes: changes,
-		},
-		Metadata: metadata,
-	}
+	// Build and dispatch event using fluent API
+	// Event type is automatically determined based on states
+	event := webhook.NewEventBuilder(r).
+		ForFlag(key, env).
+		WithStates(beforeState, afterState).
+		WithChanges(changes).
+		Build()
 
 	// Dispatch asynchronously (non-blocking)
 	s.webhookDispatcher.Dispatch(event)
