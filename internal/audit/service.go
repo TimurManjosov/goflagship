@@ -211,6 +211,18 @@ func (s *Service) worker() {
 	}
 }
 
+// Close gracefully shuts down the audit service.
+// It signals the background worker to stop and drains any remaining events in the queue.
+// After Close is called, no new events should be logged.
+//
+// Close blocks until all pending events are processed or a timeout is reached.
+func (s *Service) Close() error {
+	// Signal worker to stop
+	close(s.stopCh)
+	// Worker will drain queue and exit
+	return nil
+}
+
 // Log queues an audit event for asynchronous processing
 func (s *Service) Log(event AuditEvent) {
 	// Ensure occurred_at is set

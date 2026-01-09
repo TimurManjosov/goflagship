@@ -57,10 +57,22 @@ func (d *Dispatcher) Start() {
 	go d.worker()
 }
 
-// Stop stops the dispatcher and waits for pending events to be processed
+// Stop stops the dispatcher and waits for pending events to be processed.
+// Deprecated: Use Close() instead for consistent lifecycle management.
 func (d *Dispatcher) Stop() {
 	close(d.queue)
 	<-d.done
+}
+
+// Close gracefully shuts down the webhook dispatcher.
+// It closes the event queue and waits for all pending deliveries to complete.
+// After Close is called, no new events should be dispatched.
+//
+// Close implements the io.Closer interface for consistent resource management.
+func (d *Dispatcher) Close() error {
+	close(d.queue)
+	<-d.done
+	return nil
 }
 
 // Dispatch queues an event for webhook delivery
