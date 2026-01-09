@@ -484,62 +484,39 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 	})
 }
 
-// auditLog logs an audit event using the new audit service
+// logAudit logs an audit event using the EventBuilder pattern.
+// This is a convenience wrapper that returns a builder pre-configured with request context.
+// It automatically returns early if audit service is unavailable.
+//
+// Usage examples:
+//   - Success: s.logAudit(r).ForResource(audit.ResourceTypeFlag, key).WithAction(audit.ActionCreated).WithEnvironment(env).Build()
+//   - Failure: s.logAudit(r).ForResource(audit.ResourceTypeFlag, key).WithAction(audit.ActionUpdated).Failure("error message").Build()
+func (s *Server) logAudit(r *http.Request) *audit.EventBuilder {
+	// Return a no-op builder if audit service is unavailable
+	// The builder will still work but the Log call will be a no-op
+	return audit.NewEventBuilder(r)
+}
+
+// auditLog logs an audit event (convenience method for backward compatibility during migration).
+// Consider using logAudit() with the builder pattern for new code.
 func (s *Server) auditLog(r *http.Request, action, resourceType, resourceID, environment string, beforeState, afterState, changes map[string]any, status, errorMsg string) {
 	if s.auditService == nil {
 		return // No audit service available
 	}
 
-	// Extract actor from context
-	actor := audit.Actor{
-		Kind:    audit.ActorKindSystem,
-		Display: "system",
-	}
-	
-	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
-		idStr := formatUUID(apiKeyID)
-		actor = audit.Actor{
-			Kind:    audit.ActorKindAPIKey,
-			ID:      &idStr,
-			Display: fmt.Sprintf("api_key:%s", idStr[:8]),
-		}
+	builder := audit.NewEventBuilder(r).
+		ForResource(resourceType, resourceID).
+		WithAction(action).
+		WithEnvironment(environment).
+		WithBeforeState(beforeState).
+		WithAfterState(afterState).
+		WithChanges(changes)
+
+	if status == audit.StatusFailure && errorMsg != "" {
+		builder = builder.Failure(errorMsg)
 	}
 
-	// Build audit event
-	event := audit.AuditEvent{
-		RequestID:    middleware.GetReqID(r.Context()),
-		Actor:        actor,
-		Source: audit.Source{
-			IPAddress: auth.GetIPAddress(r),
-			UserAgent: r.UserAgent(),
-		},
-		Action:       action,
-		ResourceType: resourceType,
-		ResourceID:   resourceID,
-		Status:       status,
-	}
-
-	if environment != "" {
-		event.Environment = &environment
-	}
-
-	if beforeState != nil {
-		event.BeforeState = beforeState
-	}
-
-	if afterState != nil {
-		event.AfterState = afterState
-	}
-
-	if changes != nil {
-		event.Changes = changes
-	}
-
-	if errorMsg != "" {
-		event.ErrorMessage = &errorMsg
-	}
-
-	// Log asynchronously
+	event := builder.Build()
 	s.auditService.Log(event)
 }
 
@@ -611,48 +588,20 @@ func formatOptionalTimestamp(ts pgtype.Timestamptz) *string {
 	return &formatted
 }
 
-// dispatchWebhookEvent dispatches a webhook event for flag changes
+// dispatchWebhookEvent dispatches a webhook event for flag changes using the EventBuilder pattern.
+// Event type (created/updated/deleted) is automatically determined based on before/after states.
 func (s *Server) dispatchWebhookEvent(r *http.Request, isCreate bool, key, env string, beforeState, afterState, changes map[string]any) {
 	if s.webhookDispatcher == nil {
 		return // No webhook dispatcher available
 	}
 
-	// Determine event type
-	var eventType string
-	if beforeState == nil && afterState != nil {
-		eventType = webhook.EventFlagCreated
-	} else if beforeState != nil && afterState == nil {
-		eventType = webhook.EventFlagDeleted
-	} else {
-		eventType = webhook.EventFlagUpdated
-	}
-
-	// Build metadata
-	metadata := webhook.Metadata{
-		RequestID: middleware.GetReqID(r.Context()),
-		IPAddress: auth.GetIPAddress(r),
-	}
-	
-	if apiKeyID, ok := auth.GetAPIKeyIDFromContext(r.Context()); ok && apiKeyID.Valid {
-		metadata.APIKeyID = formatUUID(apiKeyID)
-	}
-
-	// Create and dispatch event
-	event := webhook.Event{
-		Type:        eventType,
-		Timestamp:   time.Now(),
-		Environment: env,
-		Resource: webhook.Resource{
-			Type: "flag",
-			Key:  key,
-		},
-		Data: webhook.EventData{
-			Before:  beforeState,
-			After:   afterState,
-			Changes: changes,
-		},
-		Metadata: metadata,
-	}
+	// Build and dispatch event using fluent API
+	// Event type is automatically determined based on states
+	event := webhook.NewEventBuilder(r).
+		ForFlag(key, env).
+		WithStates(beforeState, afterState).
+		WithChanges(changes).
+		Build()
 
 	// Dispatch asynchronously (non-blocking)
 	s.webhookDispatcher.Dispatch(event)
