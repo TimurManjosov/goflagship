@@ -131,7 +131,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	// Log the action (using new audit service)
 	afterState := map[string]any{
-		"id":         uuidToString(apiKey.ID),
+		"id":         formatUUID(apiKey.ID),
 		"name":       apiKey.Name,
 		"role":       string(apiKey.Role),
 		"enabled":    apiKey.Enabled,
@@ -140,11 +140,11 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if apiKey.ExpiresAt.Valid {
 		afterState["expires_at"] = formatTimestamp(apiKey.ExpiresAt)
 	}
-	s.auditLog(r, audit.ActionCreated, audit.ResourceTypeAPIKey, uuidToString(apiKey.ID), "", nil, afterState, nil, audit.StatusSuccess, "")
+	s.auditLog(r, audit.ActionCreated, audit.ResourceTypeAPIKey, formatUUID(apiKey.ID), "", nil, afterState, nil, audit.StatusSuccess, "")
 
 	// Build response
 	resp := createKeyResponse{
-		ID:        uuidToString(apiKey.ID),
+		ID:        formatUUID(apiKey.ID),
 		Name:      apiKey.Name,
 		Key:       key, // Only shown once!
 		Role:      string(apiKey.Role),
@@ -175,7 +175,7 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	for _, key := range keys {
 		info := keyInfo{
-			ID:         uuidToString(key.ID),
+			ID:         formatUUID(key.ID),
 			Name:       key.Name,
 			Role:       string(key.Role),
 			Enabled:    key.Enabled,
@@ -216,7 +216,7 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	var beforeState map[string]any
 	if apiKey, err := pgStore.GetAPIKeyByID(r.Context(), uuid); err == nil {
 		beforeState = map[string]any{
-			"id":      uuidToString(apiKey.ID),
+			"id":      formatUUID(apiKey.ID),
 			"name":    apiKey.Name,
 			"role":    string(apiKey.Role),
 			"enabled": apiKey.Enabled,
@@ -396,7 +396,7 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	for _, log := range logs {
 		info := auditLogInfo{
-			ID:        uuidToString(log.ID),
+			ID:        formatUUID(log.ID),
 			Timestamp: formatTimestamp(log.Timestamp),
 			Action:    log.Action,
 			IPAddress: log.IpAddress,
@@ -441,7 +441,7 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		if log.ApiKeyID.Valid {
-			apiKeyIDStr := uuidToString(log.ApiKeyID)
+			apiKeyIDStr := formatUUID(log.ApiKeyID)
 			info.APIKeyID = &apiKeyIDStr
 		}
 		
@@ -549,7 +549,7 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 	auditLogs := make([]auditLogInfo, 0, len(logs))
 	for _, log := range logs {
 		info := auditLogInfo{
-			ID:        uuidToString(log.ID),
+			ID:        formatUUID(log.ID),
 			Timestamp: formatTimestamp(log.Timestamp),
 			Action:    log.Action,
 			IPAddress: log.IpAddress,
@@ -586,7 +586,7 @@ func (s *Server) handleExportAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		
 		if log.ApiKeyID.Valid {
-			apiKeyIDStr := uuidToString(log.ApiKeyID)
+			apiKeyIDStr := formatUUID(log.ApiKeyID)
 			info.APIKeyID = &apiKeyIDStr
 		}
 		
@@ -707,51 +707,3 @@ type PostgresStoreInterface interface {
 	CountAuditLogs(ctx context.Context, params dbgen.CountAuditLogsParams) (int64, error)
 	CreateAuditLog(ctx context.Context, params dbgen.CreateAuditLogParams) error
 }
-
-func uuidToString(uuid pgtype.UUID) string {
-	if !uuid.Valid {
-		return ""
-	}
-	return fmt.Sprintf("%x-%x-%x-%x-%x",
-		uuid.Bytes[0:4], uuid.Bytes[4:6], uuid.Bytes[6:8], uuid.Bytes[8:10], uuid.Bytes[10:16])
-}
-
-func parseUUID(s string) (pgtype.UUID, error) {
-	var uuid pgtype.UUID
-	var b [16]byte
-	var parts [5]uint64
-
-	_, err := fmt.Sscanf(s, "%8x-%4x-%4x-%4x-%12x",
-		&parts[0], &parts[1], &parts[2], &parts[3], &parts[4])
-	if err != nil {
-		return uuid, err
-	}
-
-	// Convert parts to bytes
-	b[0] = byte(parts[0] >> 24)
-	b[1] = byte(parts[0] >> 16)
-	b[2] = byte(parts[0] >> 8)
-	b[3] = byte(parts[0])
-	
-	b[4] = byte(parts[1] >> 8)
-	b[5] = byte(parts[1])
-	
-	b[6] = byte(parts[2] >> 8)
-	b[7] = byte(parts[2])
-	
-	b[8] = byte(parts[3] >> 8)
-	b[9] = byte(parts[3])
-	
-	b[10] = byte(parts[4] >> 40)
-	b[11] = byte(parts[4] >> 32)
-	b[12] = byte(parts[4] >> 24)
-	b[13] = byte(parts[4] >> 16)
-	b[14] = byte(parts[4] >> 8)
-	b[15] = byte(parts[4])
-
-	uuid.Bytes = b
-	uuid.Valid = true
-	return uuid, nil
-}
-
-// Helper functions moved to server.go
