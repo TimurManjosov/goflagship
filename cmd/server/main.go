@@ -1,3 +1,26 @@
+// Package main provides the flagship feature flag service HTTP server.
+//
+// Application Startup Flow:
+//
+//  1. Load configuration from environment variables (config.Load)
+//  2. Initialize Prometheus metrics registry (telemetry.Init)
+//  3. Set rollout salt for deterministic user bucketing (snapshot.SetRolloutSalt)
+//  4. Create database store - Postgres or in-memory (store.NewStore)
+//  5. Load initial flag snapshot from database (store.GetAllFlags)
+//  6. Build and store snapshot in memory (snapshot.BuildFromFlags, snapshot.Update)
+//  7. Start API server on :8080 (handles client requests - evaluations, admin ops)
+//  8. Start metrics/pprof server on :9090 (for observability - /metrics, /debug/pprof)
+//  9. Wait for SIGINT/SIGTERM for graceful shutdown
+//  10. Shutdown: close connections, drain audit queue, stop webhook dispatcher
+//
+// The server runs two HTTP servers concurrently:
+//   - API Server (:8080): Client-facing REST API and SSE streaming
+//   - Metrics Server (:9090): Prometheus metrics and pprof profiling (internal use)
+//
+// Graceful Shutdown:
+//   Both servers shut down gracefully with a 5-second timeout to allow in-flight
+//   requests to complete. The audit service and webhook dispatcher also drain their
+//   queues before termination.
 package main
 
 import (
@@ -49,7 +72,7 @@ func main() {
 	currentSnapshot := snapshot.BuildFromFlags(flags)
 	snapshot.Update(currentSnapshot)
 	telemetry.SnapshotFlags.Set(float64(len(currentSnapshot.Flags)))
-	log.Printf("snapshot loaded: %d flags, etag=%s (store=%s)", 
+	log.Printf("[server] snapshot loaded: flags=%d etag=%s store=%s", 
 		len(currentSnapshot.Flags), currentSnapshot.ETag, cfg.StoreType)
 
 	// ---- API server (:8080) ----
@@ -61,7 +84,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {
-		log.Printf("http listening on %s", cfg.HTTPAddr)
+		log.Printf("[server] http server listening on %s", cfg.HTTPAddr)
 		if err := apiSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("api server: %v", err)
 		}
@@ -81,7 +104,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 	go func() {
-		log.Printf("metrics/pprof listening on %s", cfg.MetricsAddr)
+		log.Printf("[server] metrics/pprof server listening on %s", cfg.MetricsAddr)
 		if err := metricsSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("metrics server: %v", err)
 		}
@@ -92,16 +115,16 @@ func main() {
 	signal.Notify(shutdownSignal, syscall.SIGINT, syscall.SIGTERM)
 	<-shutdownSignal
 
-	log.Println("shutdown signal received, stopping servers...")
+	log.Println("[server] shutdown signal received, stopping servers...")
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 
 	if err := apiSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("error during API server shutdown: %v", err)
+		log.Printf("[server] error during API server shutdown: %v", err)
 	}
 	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("error during metrics server shutdown: %v", err)
+		log.Printf("[server] error during metrics server shutdown: %v", err)
 	}
 
-	log.Println("servers stopped successfully")
+	log.Println("[server] servers stopped successfully")
 }

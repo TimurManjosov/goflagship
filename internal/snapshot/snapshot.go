@@ -1,12 +1,36 @@
 // Package snapshot provides an in-memory cache of feature flags with ETag-based versioning.
 // The snapshot is thread-safe and updated atomically when flags change in the database.
 // It supports real-time updates via Server-Sent Events (SSE) to connected clients.
+//
+// Snapshot Lifecycle:
+//   1. Application Startup:
+//      - Load flags from database via store.GetAllFlags()
+//      - Build snapshot via BuildFromFlags() or BuildFromRows()
+//      - Store globally via Update()
+//   2. Runtime Operations:
+//      - Reads: Load() returns current snapshot (atomic, thread-safe, O(1))
+//      - Writes: Admin flag mutations trigger Update() with new snapshot
+//   3. SSE Notifications:
+//      - Update() automatically broadcasts ETag to connected SSE clients
+//      - Clients receive "update" event and can refresh their cache
+//
+// Global State Management:
+//   This package uses package-level global variables for performance and simplicity:
+//   - `current`: atomic pointer to current snapshot (modified only via atomic ops)
+//   - `rolloutSalt`: stable secret for deterministic user bucketing (set once at startup)
+//
+//   Both variables are thread-safe:
+//   - `current`: protected by atomic.LoadPointer/StorePointer
+//   - `rolloutSalt`: set once at startup, then read-only
+//
+//   This design avoids per-request synchronization overhead and provides O(1) access.
 package snapshot
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -221,6 +245,7 @@ func computeETag(flagMap map[string]FlagView) string {
 // Side effects:
 //   - Atomically updates the global 'current' pointer
 //   - Notifies all SSE subscribers of the change (publishes ETag)
+//   - Logs the update with snapshot details for observability
 //
 // This is the primary way to update the global snapshot after initialization.
 // Typically called:
@@ -234,6 +259,12 @@ func computeETag(flagMap map[string]FlagView) string {
 //   snap := snapshot.BuildFromFlags(flags)
 //   snapshot.Update(snap)  // Makes new snapshot visible globally
 func Update(newSnapshot *Snapshot) {
+	oldSnapshot := Load()
 	storeSnapshot(newSnapshot)
+	
+	// Log the update for observability
+	log.Printf("[snapshot] updated: flags=%d old_etag=%s new_etag=%s",
+		len(newSnapshot.Flags), oldSnapshot.ETag, newSnapshot.ETag)
+	
 	publishUpdate(newSnapshot.ETag) // Notify SSE listeners of the change
 }

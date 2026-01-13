@@ -197,7 +197,8 @@ func (s *Service) worker() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := s.sink.Write(ctx, event); err != nil {
 				// Log error but don't fail - audit logging must be non-blocking
-				log.Printf("audit: failed to write event: %v", err)
+				log.Printf("[audit] failed to persist event: action=%s resource=%s/%s actor=%s request_id=%s error=%v",
+					event.Action, event.ResourceType, event.ResourceID, event.Actor.Display, event.RequestID, err)
 			}
 			cancel()
 		case <-s.stopCh:
@@ -255,8 +256,9 @@ func (s *Service) Log(event AuditEvent) {
 	case s.queue <- event:
 		// Successfully queued
 	default:
-		// Queue full - log and drop
-		log.Printf("audit: queue full, dropping event for %s/%s", event.ResourceType, event.ResourceID)
+		// Queue full - log and drop with detailed context
+		log.Printf("[audit] CRITICAL: queue full (size=%d), dropping event: action=%s resource=%s/%s actor=%s",
+			cap(s.queue), event.Action, event.ResourceType, event.ResourceID, event.Actor.Display)
 	}
 }
 

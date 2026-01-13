@@ -86,11 +86,12 @@ func (d *Dispatcher) Close() error {
 func (d *Dispatcher) Dispatch(event Event) {
 	select {
 	case d.queue <- event:
-		// Event queued successfully
+		log.Printf("[webhook] event queued: type=%s resource=%s/%s env=%s queue_size=%d",
+			event.Type, event.Resource.Type, event.Resource.Key, event.Environment, len(d.queue))
 	default:
 		// Queue is full, drop event and log warning
-		log.Printf("WARNING: Webhook queue full, dropping event: type=%s, resource=%s/%s, env=%s",
-			event.Type, event.Resource.Type, event.Resource.Key, event.Environment)
+		log.Printf("[webhook] CRITICAL: queue full (size=%d), dropping event: type=%s resource=%s/%s env=%s",
+			queueSize, event.Type, event.Resource.Type, event.Resource.Key, event.Environment)
 		// Note: In production, consider adding a metric here for monitoring
 	}
 }
@@ -100,14 +101,20 @@ func (d *Dispatcher) worker() {
 	defer close(d.done)
 	
 	for event := range d.queue {
+		log.Printf("[webhook] processing event: type=%s resource=%s/%s env=%s",
+			event.Type, event.Resource.Type, event.Resource.Key, event.Environment)
+		
 		webhooks, err := d.getMatchingWebhooks(context.Background(), event)
 		if err != nil {
-			// Log error but continue processing
+			log.Printf("[webhook] failed to fetch webhooks for event: type=%s resource=%s/%s env=%s error=%v",
+				event.Type, event.Resource.Type, event.Resource.Key, event.Environment, err)
 			continue
 		}
 
+		log.Printf("[webhook] found %d matching webhook(s) for event: type=%s resource=%s/%s",
+			len(webhooks), event.Type, event.Resource.Type, event.Resource.Key)
+
 		for _, webhook := range webhooks {
-			// Deliver to each matching webhook
 			d.deliverWithRetry(context.Background(), webhook, event)
 		}
 	}
@@ -170,18 +177,26 @@ func (d *Dispatcher) deliverWithRetry(ctx context.Context, webhook dbgen.Webhook
 	payload, err := json.Marshal(event)
 	if err != nil {
 		// This should not happen, but if it does, log delivery failure
+		log.Printf("[webhook] failed to marshal event payload: webhook_id=%s event_type=%s error=%v",
+			formatWebhookID(webhook.ID), event.Type, err)
 		d.logDelivery(ctx, webhook.ID, event.Type, payload, 0, "", err.Error(), 0, false, 0)
 		return
 	}
 
 	signature := ComputeHMAC(payload, webhook.Secret)
 	deliveryID := uuid.New().String()
+	webhookIDStr := formatWebhookID(webhook.ID)
 
 	for attempt := 0; attempt <= int(webhook.MaxRetries); attempt++ {
 		start := time.Now()
 
+		log.Printf("[webhook] delivering: webhook_id=%s url=%s event_type=%s attempt=%d/%d",
+			webhookIDStr, webhook.Url, event.Type, attempt+1, webhook.MaxRetries+1)
+
 		req, err := http.NewRequest("POST", webhook.Url, bytes.NewReader(payload))
 		if err != nil {
+			log.Printf("[webhook] failed to create request: webhook_id=%s url=%s error=%v",
+				webhookIDStr, webhook.Url, err)
 			d.logDelivery(ctx, webhook.ID, event.Type, payload, 0, "", err.Error(), 0, false, attempt)
 			return
 		}
@@ -220,17 +235,37 @@ func (d *Dispatcher) deliverWithRetry(ctx context.Context, webhook dbgen.Webhook
 		d.logDelivery(ctx, webhook.ID, event.Type, payload, statusCode, responseBody, errorMsg, int(duration.Milliseconds()), success, attempt)
 
 		if success {
+			log.Printf("[webhook] delivery succeeded: webhook_id=%s status=%d duration=%dms attempt=%d/%d",
+				webhookIDStr, statusCode, duration.Milliseconds(), attempt+1, webhook.MaxRetries+1)
 			// Update last triggered timestamp
 			_ = d.queries.UpdateWebhookLastTriggered(ctx, webhook.ID)
 			return // Success, no retry needed
 		}
 
-		// Exponential backoff before retry
+		// Delivery failed
 		if attempt < int(webhook.MaxRetries) {
 			backoffDuration := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			log.Printf("[webhook] delivery failed: webhook_id=%s status=%d error=%q attempt=%d/%d retry_in=%s",
+				webhookIDStr, statusCode, errorMsg, attempt+1, webhook.MaxRetries+1, backoffDuration)
 			time.Sleep(backoffDuration)
+		} else {
+			log.Printf("[webhook] delivery failed permanently: webhook_id=%s status=%d error=%q attempts=%d/%d",
+				webhookIDStr, statusCode, errorMsg, attempt+1, webhook.MaxRetries+1)
 		}
 	}
+}
+
+// formatWebhookID converts a UUID to a string for logging
+func formatWebhookID(id pgtype.UUID) string {
+	if !id.Valid {
+		return "unknown"
+	}
+	// Convert UUID bytes to string
+	u, err := uuid.FromBytes(id.Bytes[:])
+	if err != nil {
+		return "invalid"
+	}
+	return u.String()
 }
 
 // logDelivery records a webhook delivery attempt in the database
