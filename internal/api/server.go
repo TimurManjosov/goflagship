@@ -1,3 +1,32 @@
+// Package api provides HTTP handlers and middleware for the flagship feature flag service.
+//
+// Request Flow:
+//   1. HTTP request hits Router() handler (defined in this file)
+//   2. Request passes through middleware (auth, rate limit, request ID, CORS)
+//   3. Handler function validates request and extracts parameters
+//   4. Business logic delegates to specialized packages (evaluation, snapshot, webhook, audit)
+//   5. Admin operations are logged to audit service (async, non-blocking)
+//   6. Admin mutations trigger snapshot update and webhook dispatch
+//   7. Response is serialized as JSON and returned to client
+//
+// How to add a new API endpoint:
+//
+//  1. Add handler function: func (s *Server) handleNewFeature(w http.ResponseWriter, r *http.Request)
+//  2. Register route in Router(): r.Post("/v1/new-feature", s.handleNewFeature)
+//  3. Add authentication if needed: r.With(s.auth.RequireRole("admin")).Post(...)
+//  4. Use structured error responses: BadRequestError(w, r, code, message)
+//  5. Log audit events for admin actions: s.auditService.Log(...)
+//  6. Add tests in server_test.go following existing patterns
+//
+// Authentication:
+//   - Read endpoints (GET /v1/flags/evaluate, GET /v1/flags/snapshot): No auth required
+//   - Admin endpoints (POST/PUT/DELETE): Require API key with appropriate role
+//   - API keys are validated by auth.Authenticator middleware
+//
+// Error Handling:
+//   - Use error helpers from errors.go (BadRequestError, ValidationError, etc.)
+//   - All errors return structured JSON with code, message, and optional field details
+//   - Request ID is automatically included in error responses for debugging
 package api
 
 import (

@@ -1,3 +1,18 @@
+// Package api provides HTTP handlers and middleware for the flagship feature flag service.
+//
+// Flag Evaluation Flow (POST /v1/flags/evaluate):
+//
+//  1. Parse and validate request (user ID required, optional flag keys filter)
+//  2. Load current snapshot from memory (thread-safe atomic read)
+//  3. For each flag in snapshot (or filtered subset):
+//     a. Check if flag is enabled (if not, return enabled=false)
+//     b. Evaluate targeting expression against user context (using JSON Logic)
+//     c. Evaluate rollout percentage with deterministic bucketing (hash-based)
+//     d. Evaluate variants for A/B testing (if configured)
+//  4. Build response with evaluation results and ETag for caching
+//  5. Return response (evaluation is a read operation, no audit logging)
+//
+// The evaluation is stateless and read-only, making it safe for high-concurrency workloads.
 package api
 
 import (
