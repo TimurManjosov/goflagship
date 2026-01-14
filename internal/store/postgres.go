@@ -16,7 +16,25 @@ const (
 )
 
 // PostgresStore is a PostgreSQL implementation of the Store interface.
-// It wraps the existing sqlc-generated queries for database operations.
+//
+// Thread Safety:
+//   All methods are safe for concurrent access via pgxpool connection pooling.
+//   The underlying connection pool manages concurrency and connection lifecycle.
+//
+// Error Handling:
+//   - Database errors are returned as-is (wrapped pgx errors)
+//   - "Not found" errors are converted to domain-specific errors
+//   - JSON marshaling errors are returned for invalid config data
+//
+// Resource Management:
+//   - Close() must be called when done to release connections
+//   - Close() is safe to call multiple times
+//   - After Close(), no methods should be called
+//
+// Lifecycle:
+//   1. Create: NewPostgresStore(pool)
+//   2. Use: Call GetAllFlags, UpsertFlag, etc.
+//   3. Cleanup: Close() to release resources
 type PostgresStore struct {
 	pool *pgxpool.Pool
 	q    *dbgen.Queries
@@ -31,6 +49,25 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 }
 
 // GetAllFlags retrieves all flags for the given environment from the database.
+//
+// Preconditions:
+//   - ctx must be non-nil (panic if nil)
+//   - env may be empty string (will return flags for empty env, likely none)
+//
+// Postconditions:
+//   - Returns []Flag (never nil, may be empty) on success
+//   - Returns error if database query fails or conversion fails
+//   - Does not return nil slice on success (returns empty slice instead)
+//
+// Edge Cases:
+//   - env="": Returns flags with env="" (if any exist in DB)
+//   - No matching flags: Returns empty slice (not error)
+//   - Database error: Returns nil slice with error
+//   - Invalid JSON in config: Returns error (conversion fails)
+//
+// Performance:
+//   Pre-allocates result slice with capacity = query result size.
+//   Converts all rows to domain objects before returning.
 func (p *PostgresStore) GetAllFlags(ctx context.Context, env string) ([]Flag, error) {
 	dbFlags, err := p.q.GetAllFlags(ctx, env)
 	if err != nil {
@@ -50,6 +87,24 @@ func (p *PostgresStore) GetAllFlags(ctx context.Context, env string) ([]Flag, er
 }
 
 // GetFlagByKey retrieves a single flag by its key from the database.
+//
+// Preconditions:
+//   - ctx must be non-nil (panic if nil)
+//   - key may be empty (will likely not find any flag)
+//
+// Postconditions:
+//   - Returns non-nil *Flag on success
+//   - Returns error if flag not found or database query fails
+//   - Flag not found returns domain error "flag not found" (not pgx.ErrNoRows)
+//
+// Edge Cases:
+//   - key="": Likely returns "flag not found" (unless empty key exists in DB)
+//   - Multiple flags with same key: Returns first match (DB should prevent this)
+//   - Flag exists but has invalid JSON config: Returns error
+//
+// Error Types:
+//   - "flag not found": Flag doesn't exist in database
+//   - Other errors: Database connectivity or data conversion errors
 func (p *PostgresStore) GetFlagByKey(ctx context.Context, key string) (*Flag, error) {
 	dbFlag, err := p.q.GetFlagByKey(ctx, key)
 	if err != nil {
@@ -68,6 +123,33 @@ func (p *PostgresStore) GetFlagByKey(ctx context.Context, key string) (*Flag, er
 }
 
 // UpsertFlag creates or updates a flag in the database.
+//
+// Preconditions:
+//   - ctx must be non-nil (panic if nil)
+//   - params.Key must be non-empty (database constraint)
+//   - params.Env must be non-empty (database constraint)
+//   - params.Config may be nil (converted to empty JSON object {})
+//
+// Postconditions:
+//   - Returns nil on success (flag created or updated)
+//   - Returns error if database constraint violated or operation fails
+//   - If flag exists (key+env match), it's updated
+//   - If flag doesn't exist, it's created
+//
+// Idempotent:
+//   Calling with same params multiple times produces same result.
+//   Safe to retry on transient failures.
+//
+// Edge Cases:
+//   - params.Config=nil: Stored as {} (empty JSON object)
+//   - params.Config={}: Stored as {} (empty JSON object)
+//   - params.Description="": Stored as empty string
+//   - params.Expression=nil: Stored as NULL in database
+//   - Invalid JSON in Config: Returns JSON marshaling error
+//   - Key/Env combination exists: Updates existing flag
+//
+// Database Constraints:
+//   Primary key: (key, env) - ensures uniqueness per environment
 func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) error {
 	// Convert config map to JSON bytes
 	var configBytes []byte
@@ -95,6 +177,24 @@ func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) err
 }
 
 // DeleteFlag removes a flag from the database.
+//
+// Preconditions:
+//   - ctx must be non-nil (panic if nil)
+//   - key and env identify the flag to delete
+//
+// Postconditions:
+//   - Returns nil on success (flag deleted or didn't exist)
+//   - Idempotent: deleting non-existent flag is not an error
+//
+// Edge Cases:
+//   - Flag doesn't exist: Returns nil (not an error, idempotent)
+//   - key="": Attempts to delete flag with empty key (likely no-op)
+//   - env="": Attempts to delete flag with empty env (likely no-op)
+//   - Database error: Returns error
+//
+// Idempotent:
+//   Safe to call multiple times with same parameters.
+//   Deleting a flag that doesn't exist is considered success.
 func (p *PostgresStore) DeleteFlag(ctx context.Context, key, env string) error {
 	return p.q.DeleteFlag(ctx, dbgen.DeleteFlagParams{
 		Key: key,
@@ -103,6 +203,23 @@ func (p *PostgresStore) DeleteFlag(ctx context.Context, key, env string) error {
 }
 
 // Close closes the database connection pool.
+//
+// Preconditions:
+//   - None (safe to call anytime)
+//
+// Postconditions:
+//   - Pool is closed and resources released
+//   - No database operations should be performed after Close
+//   - Safe to call multiple times (subsequent calls are no-ops)
+//
+// Thread Safety:
+//   Safe to call from multiple goroutines (pgxpool handles this).
+//
+// Edge Cases:
+//   - Pool already closed: No error, no-op
+//   - Pending queries: May be canceled or completed (pool dependent)
+//
+// Always returns nil (implements io.Closer interface convention).
 func (p *PostgresStore) Close() error {
 	p.pool.Close()
 	return nil

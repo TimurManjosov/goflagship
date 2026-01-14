@@ -1,5 +1,50 @@
 // Package evaluation provides server-side flag evaluation logic.
 // It evaluates flags for a given user context, handling expressions, rollouts, and variants.
+//
+// Testing Guide:
+//
+// This package is designed for easy unit testing without external dependencies.
+// All evaluation functions are pure (no I/O, no global state access within functions).
+//
+// How to Test EvaluateFlag:
+//
+//  1. Create test flag using snapshot.FlagView struct
+//  2. Create test context with Context{UserID: "test-user", Attributes: {...}}
+//  3. Call EvaluateFlag with test salt (use consistent salt for determinism)
+//  4. Assert on Result fields (Enabled, Variant, Config)
+//
+// Example:
+//
+//	flag := snapshot.FlagView{
+//	    Key: "test_flag",
+//	    Enabled: true,
+//	    Rollout: 50,  // 50% rollout
+//	}
+//	ctx := Context{UserID: "user-123"}
+//	result := EvaluateFlag(flag, ctx, "test-salt")
+//	// Assert based on expected behavior
+//
+// Edge Cases to Test:
+//
+//   - Empty userID: rollout should fail, expression may still pass
+//   - Rollout 0%: should always return disabled
+//   - Rollout 100%: should always return enabled
+//   - Invalid expression: should return disabled (error handled internally)
+//   - No variants: should return flag-level config
+//   - Variants with no config: should fall back to flag-level config
+//   - Empty salt: evaluation works but reduces hash quality
+//
+// Testing EvaluateAll:
+//
+//   - Test with empty flag map
+//   - Test with keys filter (subset of flags)
+//   - Test with keys that don't exist (should be ignored)
+//   - Test that non-deterministic order is acceptable (use map)
+//
+// No Mocking Required:
+//
+//   All dependencies (snapshot, rollout, targeting) have their own tests.
+//   This package tests integration of those components.
 package evaluation
 
 import (
