@@ -32,7 +32,34 @@ type WebhookQueries interface {
 	CreateWebhookDelivery(ctx context.Context, params dbgen.CreateWebhookDeliveryParams) (dbgen.WebhookDelivery, error)
 }
 
-// Dispatcher manages webhook event dispatching and delivery
+// Dispatcher manages webhook event dispatching and delivery.
+//
+// Lifecycle:
+//   1. Create: NewDispatcher(queries) — creates dispatcher in stopped state
+//   2. Start: Start() — begins background worker goroutine
+//   3. Runtime: Dispatch(event) — queues events for delivery
+//   4. Shutdown: Close() — stops worker and waits for pending deliveries
+//
+// Concurrency Model:
+//   - Single background worker goroutine processes events sequentially
+//   - Dispatch() is non-blocking (queues event in buffered channel)
+//   - Worker fetches matching webhooks and delivers with retry logic
+//   - Multiple deliveries for same event are sent concurrently (separate HTTP requests)
+//
+// Queue Behavior:
+//   - Queue size: 1000 events (configurable via queueSize const)
+//   - Queue full: Events are dropped with critical log message
+//   - Queue closed: Worker exits after processing remaining events
+//
+// Thread Safety:
+//   - Dispatch() is safe to call from multiple goroutines
+//   - Close() is safe to call multiple times (idempotent)
+//   - Start() should only be called once (not protected)
+//
+// Error Handling:
+//   - Database errors: Logged, event is skipped
+//   - HTTP errors: Logged, delivery is retried
+//   - JSON marshal errors: Logged, delivery is marked as failed
 type Dispatcher struct {
 	queries WebhookQueries
 	client  *http.Client
@@ -81,8 +108,34 @@ func (d *Dispatcher) Close() error {
 	return nil
 }
 
-// Dispatch queues an event for webhook delivery
-// This is non-blocking and will not slow down the caller
+// Dispatch queues an event for webhook delivery.
+//
+// Preconditions:
+//   - Dispatcher must be started via Start() (not enforced but required)
+//   - event should have valid Type, Resource, and Environment
+//
+// Postconditions:
+//   - Event is queued if space available (non-blocking)
+//   - Event is dropped with log if queue is full
+//   - Returns immediately (does not wait for delivery)
+//
+// Non-Blocking Behavior:
+//   This method never blocks the caller. If the queue is full, the event
+//   is dropped immediately with a critical log message. This prevents
+//   flag operations from being delayed by slow webhook deliveries.
+//
+// Queue Full Handling:
+//   When queue is at capacity (1000 events), new events are dropped.
+//   This indicates webhooks are processing slower than events are arriving.
+//   Consider: increasing queue size, reducing webhook count, or optimizing delivery.
+//
+// Edge Cases:
+//   - Dispatcher not started: Event is queued but never processed (goroutine not running)
+//   - Dispatcher closed: Event is dropped (queue is closed, select sees default case)
+//   - Queue full: Event is dropped with critical log
+//
+// Usage:
+//   dispatcher.Dispatch(event)  // Fire and forget
 func (d *Dispatcher) Dispatch(event Event) {
 	select {
 	case d.queue <- event:
@@ -172,7 +225,53 @@ func (d *Dispatcher) matches(webhook dbgen.Webhook, event Event) bool {
 	return true
 }
 
-// deliverWithRetry attempts to deliver an event to a webhook with retry logic
+// deliverWithRetry attempts to deliver an event to a webhook with retry logic.
+//
+// Preconditions:
+//   - webhook is a valid database record with URL, secret, max retries, timeout
+//   - event can be marshaled to JSON
+//   - ctx is valid context (used for HTTP request timeout)
+//
+// Postconditions:
+//   - Delivery is attempted up to (maxRetries + 1) times
+//   - Each attempt is logged to database via CreateWebhookDelivery
+//   - Successful delivery updates webhook's last_triggered timestamp
+//   - Failed deliveries are logged with error details
+//
+// Retry Logic:
+//   - Initial attempt + maxRetries additional attempts
+//   - Exponential backoff: 2^attempt seconds (1s, 2s, 4s, 8s, ...)
+//   - Success: HTTP status 2xx
+//   - Failure: HTTP status != 2xx or network error
+//   - No retry if event fails to marshal to JSON
+//
+// HTTP Request:
+//   - Method: POST
+//   - Headers:
+//     - Content-Type: application/json
+//     - X-Flagship-Signature: HMAC-SHA256 of payload
+//     - X-Flagship-Event: event type
+//     - X-Flagship-Delivery: unique UUID for this delivery
+//   - Timeout: webhook.TimeoutSeconds (per-request timeout)
+//   - Body: JSON-serialized event
+//
+// Response Handling:
+//   - Response body read (limited to 1KB)
+//   - Response body stored in delivery record
+//   - Connection properly closed after each attempt
+//
+// Edge Cases:
+//   - JSON marshal fails: Single delivery record with error, no retries
+//   - First attempt succeeds: No retries, returns immediately
+//   - All retries fail: Final attempt logged as permanent failure
+//   - Context canceled: Current request aborted, logged as error
+//   - Response body > 1KB: Truncated to 1KB for storage
+//
+// Delivery Record:
+//   Each attempt creates a database record with:
+//   - webhook_id, event_type, payload, status_code
+//   - response_body, error_message, duration_ms
+//   - success (true/false), retry_count (0-based)
 func (d *Dispatcher) deliverWithRetry(ctx context.Context, webhook dbgen.Webhook, event Event) {
 	payload, err := json.Marshal(event)
 	if err != nil {

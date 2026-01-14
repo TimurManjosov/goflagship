@@ -24,17 +24,32 @@ type Variant struct {
 
 // IsRolledOut determines if a user is included in a feature flag rollout.
 //
+// Preconditions:
+//   - rollout must be in range [0, 100] (returns error otherwise)
+//   - userID, flagKey, salt may be empty strings (see edge cases)
+//
+// Postconditions:
+//   - Returns (false, ErrInvalidRollout) if rollout < 0 or > 100
+//   - Returns (true/false, nil) for valid rollout values
+//   - Never returns true with a non-nil error
+//
 // Algorithm:
 //   1. Hash(userID + flagKey + salt) → bucket (0-99)
 //   2. If bucket < rollout percentage, user is included
 //
-// Special cases:
-//   - rollout=0: Always returns false (flag disabled for all)
-//   - rollout=100: Always returns true (flag enabled for all)
-//   - userID="": Always returns false (no user context means no targeting)
+// Edge Cases:
+//   - rollout=0: Always returns (false, nil) — flag disabled for all users (fast path)
+//   - rollout=100: Always returns (true, nil) — flag enabled for all users (fast path)
+//   - rollout<0 or >100: Returns (false, ErrInvalidRollout) — invalid configuration
+//   - userID="": Always returns (false, nil) — anonymous users not targeted
+//   - flagKey="": Proceeds with empty key (valid but unusual, reduces hash distribution)
+//   - salt="": Proceeds with empty salt (valid but not recommended, reduces hash quality)
+//
+// Deterministic Behavior:
+//   Same (userID, flagKey, rollout, salt) always produces same result.
+//   Increasing rollout from 25% to 50% adds users, never removes existing ones.
 //
 // Example: rollout=25 means ~25% of users see the feature.
-// Increasing rollout from 25 to 50 will add users, never remove existing ones.
 func IsRolledOut(userID, flagKey string, rollout int32, salt string) (bool, error) {
 	if rollout < 0 || rollout > 100 {
 		return false, ErrInvalidRollout
@@ -54,7 +69,31 @@ func IsRolledOut(userID, flagKey string, rollout int32, salt string) (bool, erro
 }
 
 // ValidateVariants checks that variant weights sum to exactly 100 and all names are non-empty and unique.
-// Returns nil if variants slice is empty (no A/B test configured).
+//
+// Preconditions:
+//   - variants slice may be nil or empty
+//
+// Postconditions:
+//   - Returns nil if variants is empty (no A/B test configured)
+//   - Returns error if validation fails
+//   - Does not modify the variants slice
+//
+// Validation Rules:
+//   1. Empty variants slice is valid (returns nil)
+//   2. All variant names must be non-empty strings
+//   3. All variant names must be unique
+//   4. All variant weights must be in range [0, 100]
+//   5. Sum of all variant weights must equal exactly 100
+//
+// Edge Cases:
+//   - variants=nil: Returns nil (valid, no variants)
+//   - variants=[]: Returns nil (valid, no variants)
+//   - variants with empty name: Returns error
+//   - variants with duplicate names: Returns error
+//   - variants with weights summing to 99 or 101: Returns ErrInvalidVariantWeights
+//   - single variant with weight=100: Valid (A/B test with 100% control)
+//
+// Returns nil if valid, or an error describing why it's invalid.
 func ValidateVariants(variants []Variant) error {
 	if len(variants) == 0 {
 		return nil // Empty variants is valid (no A/B test)
@@ -86,6 +125,16 @@ func ValidateVariants(variants []Variant) error {
 
 // GetVariant determines which A/B test variant a user is assigned to based on their bucket.
 //
+// Preconditions:
+//   - variants slice should be pre-validated (use ValidateVariants first)
+//   - userID, flagKey, salt may be empty strings (see edge cases)
+//
+// Postconditions:
+//   - Returns ("", nil) if no variants or validation fails
+//   - Returns (variantName, nil) on successful assignment
+//   - Returns ("", error) if validation fails
+//   - Never returns non-empty variant name with non-nil error
+//
 // Algorithm:
 //   1. Hash(userID + flagKey + salt) → bucket (0-99)
 //   2. Assign variant based on cumulative weight ranges
@@ -95,10 +144,16 @@ func ValidateVariants(variants []Variant) error {
 //   - bucket 50-79 → B
 //   - bucket 80-99 → C
 //
-// Returns empty string if:
-//   - No variants defined
-//   - userID is empty (no user context)
-//   - Validation fails
+// Edge Cases:
+//   - variants=nil or []: Returns ("", nil) — no A/B test configured
+//   - userID="": Returns ("", nil) — anonymous users not assigned variants
+//   - flagKey="": Proceeds with empty key (unusual but valid)
+//   - salt="": Proceeds with empty salt (valid but reduces hash quality)
+//   - Validation fails: Returns ("", error) — invalid variant configuration
+//   - bucket >= 100: Should never happen, returns last variant as fallback
+//
+// Deterministic Behavior:
+//   Same (userID, flagKey, variants, salt) always produces same variant assignment.
 func GetVariant(userID, flagKey string, variants []Variant, salt string) (string, error) {
 	if len(variants) == 0 {
 		return "", nil
@@ -129,11 +184,22 @@ func GetVariant(userID, flagKey string, variants []Variant, salt string) (string
 }
 
 // GetVariantConfig returns the configuration for the variant assigned to the user.
-// Returns nil if:
-//   - No variants are defined
-//   - userID is empty
-//   - The assigned variant has no config
-//   - Validation fails
+//
+// Preconditions:
+//   - variants slice should be pre-validated
+//   - userID, flagKey, salt may be empty
+//
+// Postconditions:
+//   - Returns nil if no variant assigned or variant has no config
+//   - Returns config map if variant is assigned and has config
+//   - Returns (nil, error) if GetVariant fails
+//
+// Edge Cases:
+//   - No variants defined: Returns (nil, nil)
+//   - userID="": Returns (nil, nil) — no user context
+//   - Assigned variant has no config: Returns (nil, nil)
+//   - Assigned variant has empty config map: Returns empty map (not nil)
+//   - GetVariant fails: Returns (nil, error)
 func GetVariantConfig(userID, flagKey string, variants []Variant, salt string) (map[string]any, error) {
 	variantName, err := GetVariant(userID, flagKey, variants, salt)
 	if err != nil || variantName == "" {

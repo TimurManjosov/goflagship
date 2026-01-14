@@ -32,12 +32,35 @@ type EvaluateResponse struct {
 }
 
 // EvaluateFlag evaluates a single flag for the given context.
-// Evaluation order:
-// 1. Check enabled field → if false, return disabled
-// 2. Evaluate expression (if present) → if false, return disabled
-// 3. Check rollout (if <100) → hash user ID to determine inclusion
-// 4. Determine variant (if configured)
-// 5. Return result with resolved config
+//
+// Preconditions:
+//   - flag must have non-empty Key (required for hashing)
+//   - salt should be non-empty (empty salt reduces hash quality but is allowed)
+//   - ctx.UserID may be empty (treated as anonymous/unauthenticated user)
+//   - ctx.Attributes may be nil (treated as empty map)
+//
+// Postconditions:
+//   - Always returns a Result with Key matching flag.Key
+//   - Returns Enabled=false if any evaluation step fails or user doesn't match
+//   - Result.Variant is empty string when no variants configured or assignment fails
+//   - Result.Config is nil when neither flag nor variant has config
+//
+// Evaluation order (each step can short-circuit to disabled):
+//   1. Check enabled field → if false, return disabled
+//   2. Evaluate expression (if present) → if false or error, return disabled
+//   3. Check rollout (if <100) → hash user ID to determine inclusion
+//      - Special cases: empty userID always excluded, rollout=0 always disabled, rollout=100 always enabled
+//   4. Determine variant (if configured) → assign based on user bucket
+//   5. Return result with resolved config (variant config > flag config)
+//
+// Edge Cases:
+//   - Empty ctx.UserID: expression may still pass, but rollout check will fail
+//   - Empty salt: hashing works but produces less random distribution
+//   - flag.Rollout = 0: fast-path returns disabled without hashing
+//   - flag.Rollout = 100: fast-path returns enabled without hashing
+//   - Invalid expression: treated as evaluation failure, returns disabled
+//   - No variants: returns flag-level config
+//   - Variant with no config: falls back to flag-level config
 func EvaluateFlag(flag snapshot.FlagView, ctx Context, salt string) Result {
 	result := Result{
 		Key:     flag.Key,
@@ -78,7 +101,25 @@ func EvaluateFlag(flag snapshot.FlagView, ctx Context, salt string) Result {
 }
 
 // EvaluateAll evaluates all flags for the given context.
-// If keys is non-empty, only the specified flags are evaluated.
+//
+// Preconditions:
+//   - flags map may be nil or empty (returns empty slice)
+//   - ctx is evaluated for each flag (may have empty UserID)
+//   - salt is used for all rollout evaluations
+//   - keys is an optional filter (empty means evaluate all)
+//
+// Postconditions:
+//   - Returns slice of Results (never nil, may be empty)
+//   - When keys is empty, evaluates all flags in map
+//   - When keys is non-empty, only evaluates flags that exist in map
+//   - Non-existent keys in filter are silently ignored (no error)
+//   - Result order is non-deterministic (map iteration order)
+//
+// Edge Cases:
+//   - Empty flags map: returns empty slice (not nil)
+//   - keys contains non-existent flag keys: those keys are skipped
+//   - keys is empty: evaluates all flags
+//   - flags is nil: returns empty slice
 func EvaluateAll(flags map[string]snapshot.FlagView, ctx Context, salt string, keys []string) []Result {
 	// Pre-allocate slice with appropriate capacity to avoid reallocation
 	var results []Result
@@ -105,6 +146,21 @@ func EvaluateAll(flags map[string]snapshot.FlagView, ctx Context, salt string, k
 }
 
 // buildTargetingContext creates a targeting.UserContext from evaluation context.
+//
+// Preconditions:
+//   - ctx.Attributes may be nil (treated as empty map)
+//   - ctx.UserID may be empty string
+//
+// Postconditions:
+//   - Returns non-nil map (never nil, at minimum contains "id" key)
+//   - "id" key is always present (set to ctx.UserID, may be empty string)
+//   - All attributes from ctx.Attributes are copied
+//   - Map is pre-sized to avoid reallocations
+//
+// Edge Cases:
+//   - ctx.Attributes is nil: returns map with only "id" key
+//   - ctx.UserID is empty: "id" key is set to empty string
+//   - ctx.Attributes has "id" key: original "id" is overwritten by ctx.UserID
 func buildTargetingContext(ctx Context) targeting.UserContext {
 	// Pre-size map to avoid reallocation (1 for ID + attributes)
 	targetCtx := make(targeting.UserContext, len(ctx.Attributes)+1)

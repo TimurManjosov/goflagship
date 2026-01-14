@@ -76,7 +76,38 @@ type VariantValidationParams struct {
 	Weight int
 }
 
-// ValidateFlag validates all flag fields and returns a validation result
+// ValidateFlag validates all flag fields and returns a validation result.
+//
+// Preconditions:
+//   - params contains the flag data to validate
+//   - params fields may have any values (validation will check all constraints)
+//
+// Postconditions:
+//   - Always returns non-nil *ValidationResult
+//   - result.Valid is true if all validations pass
+//   - result.Errors contains field-specific error messages if validation fails
+//   - Does not modify params
+//
+// Validation Order:
+//   1. Key validation (required, max length, pattern)
+//   2. Env validation (required, max length)
+//   3. Description validation (max length)
+//   4. Rollout validation (range 0-100)
+//   5. Config size validation (if ConfigJSON provided)
+//   6. Variants validation (if Variants provided)
+//
+// Edge Cases:
+//   - All fields empty: Multiple validation errors returned
+//   - Some fields valid, some invalid: Only invalid fields have errors
+//   - ConfigJSON empty: Config size validation skipped
+//   - Variants empty: Variant validation skipped
+//   - Multiple validation failures: All failures are collected and returned
+//
+// Usage Pattern:
+//   result := ValidateFlag(params)
+//   if !result.Valid {
+//       // Handle validation errors in result.Errors map
+//   }
 func ValidateFlag(params FlagValidationParams) *ValidationResult {
 	result := NewValidationResult()
 
@@ -111,7 +142,27 @@ func ValidateFlag(params FlagValidationParams) *ValidationResult {
 	return result
 }
 
-// ValidateKey validates a flag key
+// ValidateKey validates a flag key.
+//
+// Preconditions:
+//   - key may be any string (including empty)
+//
+// Postconditions:
+//   - Returns *ValidationResult with Valid=true if key passes all checks
+//   - Returns *ValidationResult with Valid=false and error in Errors["key"] if invalid
+//
+// Validation Rules:
+//   1. Key cannot be empty (after trimming whitespace)
+//   2. Key must not exceed MaxKeyLength (64) characters
+//   3. Key must match pattern: alphanumeric, underscores, hyphens only
+//
+// Edge Cases:
+//   - key is empty string: Error "Key is required"
+//   - key is whitespace only: Error "Key is required" (trimmed to empty)
+//   - key has spaces in middle: Error about invalid pattern
+//   - key has special characters: Error about invalid pattern
+//   - key exactly 64 chars: Valid
+//   - key 65 chars: Error about length
 func ValidateKey(key string) *ValidationResult {
 	result := NewValidationResult()
 	key = strings.TrimSpace(key)
@@ -202,7 +253,37 @@ func ValidateConfigJSON(configStr string) (*ValidationResult, map[string]any) {
 	return result, config
 }
 
-// ValidateVariants validates a list of variants
+// ValidateVariants validates a list of variants.
+//
+// Preconditions:
+//   - variants may be nil or empty slice
+//
+// Postconditions:
+//   - Returns *ValidationResult with Valid=true for empty or valid variants
+//   - Returns *ValidationResult with Valid=false if any validation fails
+//   - Only first error is reported (stops on first validation failure)
+//
+// Validation Rules:
+//   1. Empty variants slice is valid (no A/B test)
+//   2. Each variant name must be non-empty after trimming
+//   3. Each variant name must not exceed MaxVariantNameLength (64)
+//   4. All variant names must be unique
+//   5. Each variant weight must be in range [0, 100]
+//   6. Sum of all variant weights must equal exactly 100
+//
+// Edge Cases:
+//   - variants is nil: Valid (no A/B test)
+//   - variants is empty slice: Valid (no A/B test)
+//   - Single variant with weight=100: Valid (control-only test)
+//   - Variants with weights summing to 99: Invalid (must sum to 100)
+//   - Variants with weights summing to 101: Invalid (must sum to 100)
+//   - Duplicate variant names: Invalid (must be unique)
+//   - Variant with empty name: Invalid (name required)
+//   - Variant with name > 64 chars: Invalid (exceeds max length)
+//
+// Error Reporting:
+//   Stops at first validation error and returns it in Errors["variants"].
+//   Does not collect multiple variant errors in one pass.
 func ValidateVariants(variants []VariantValidationParams) *ValidationResult {
 	result := NewValidationResult()
 

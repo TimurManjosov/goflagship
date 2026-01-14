@@ -159,7 +159,34 @@ func storeSnapshot(snapshot *Snapshot) {
 }
 
 // BuildFromRows constructs a snapshot from database query results.
-// This is used when loading flags directly from PostgreSQL queries.
+//
+// Preconditions:
+//   - rows may be nil or empty (produces empty snapshot)
+//   - rolloutSalt must be set via SetRolloutSalt before calling (global state dependency)
+//
+// Postconditions:
+//   - Always returns non-nil *Snapshot
+//   - Snapshot.Flags is never nil (empty map if rows is empty)
+//   - Snapshot.ETag is computed from flags (same flags = same ETag)
+//   - Snapshot.UpdatedAt is set to current time (non-deterministic)
+//   - Snapshot.RolloutSalt is set to global rolloutSalt value
+//
+// Edge Cases:
+//   - rows is nil: Returns snapshot with empty flags map
+//   - rows is empty: Returns snapshot with empty flags map
+//   - rows contains duplicate keys: Last row wins (map overwrite)
+//   - row.Config is invalid JSON: Config is set to nil, no error returned
+//   - row.Description is null: Converted to empty string
+//   - row.Expression is null: Set to nil (no expression)
+//
+// JSON Unmarshaling:
+//   - Config unmarshal errors are silently ignored
+//   - Invalid JSON results in nil config, not an error
+//   - This is lenient to support partial/legacy data
+//
+// Usage:
+//   This is used when loading flags directly from PostgreSQL queries.
+//   For loading from store.Flag objects, use BuildFromFlags instead.
 func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 	flagsMap := make(map[string]FlagView, len(rows))
 	for _, row := range rows {
@@ -190,7 +217,34 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 }
 
 // BuildFromFlags creates a snapshot from store.Flag objects.
-// This is the primary method for creating snapshots from the store layer.
+//
+// Preconditions:
+//   - flags may be nil or empty (produces empty snapshot)
+//   - rolloutSalt must be set via SetRolloutSalt before calling (global state dependency)
+//
+// Postconditions:
+//   - Always returns non-nil *Snapshot
+//   - Snapshot.Flags is never nil (empty map if flags is empty)
+//   - Snapshot.ETag is computed from flags (deterministic for same flags)
+//   - Snapshot.UpdatedAt is set to current time (non-deterministic)
+//   - Snapshot.RolloutSalt is set to global rolloutSalt value
+//   - All variants are converted from store.Variant to snapshot.Variant
+//
+// Edge Cases:
+//   - flags is nil: Returns snapshot with empty flags map
+//   - flags is empty: Returns snapshot with empty flags map
+//   - flags contains duplicate keys: Last flag wins (map overwrite)
+//   - flag has no variants: Variants field is nil (not empty slice)
+//   - flag has empty variants slice: Converted to empty slice
+//
+// Variant Conversion:
+//   - Converts store.Variant to snapshot.Variant (same structure)
+//   - Preserves all variant fields (Name, Weight, Config)
+//   - Empty variant config remains nil
+//
+// Usage:
+//   This is the primary method for creating snapshots from the store layer.
+//   Typically called after store.GetAllFlags() returns results.
 func BuildFromFlags(flags []store.Flag) *Snapshot {
 	flagMap := make(map[string]FlagView, len(flags))
 	for _, flag := range flags {
@@ -230,7 +284,34 @@ func BuildFromFlags(flags []store.Flag) *Snapshot {
 }
 
 // computeETag generates a weak ETag from the flag map using SHA-256.
-// The ETag changes whenever flag content changes, enabling efficient cache validation.
+//
+// Preconditions:
+//   - flagMap may be nil or empty
+//
+// Postconditions:
+//   - Always returns non-empty string in format: W/"<hex-hash>"
+//   - Same flag content produces same ETag (deterministic)
+//   - Different flag content produces different ETag (high probability)
+//   - Format follows HTTP weak ETag convention (W/ prefix)
+//
+// Algorithm:
+//   1. Serialize flagMap to JSON (deterministic for Go maps in JSON)
+//   2. Compute SHA-256 hash of serialized JSON
+//   3. Encode hash as hex string
+//   4. Wrap in weak ETag format: W/"<hex>"
+//
+// Edge Cases:
+//   - flagMap is nil: Produces ETag for empty map
+//   - flagMap is empty: Produces ETag for empty map (same as nil)
+//   - JSON marshaling fails: Produces ETag for empty byte slice (should never happen)
+//
+// ETag Format:
+//   The ETag changes whenever flag content changes, enabling efficient cache validation.
+//   Weak ETag (W/) indicates semantic equivalence rather than byte-for-byte identity.
+//
+// Performance:
+//   Uses SHA-256 for collision resistance.
+//   JSON marshaling is deterministic but may be slow for large flag sets.
 func computeETag(flagMap map[string]FlagView) string {
 	serialized, _ := json.Marshal(flagMap)
 	hash := sha256.Sum256(serialized)
