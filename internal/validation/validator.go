@@ -97,7 +97,7 @@ type VariantValidationParams struct {
 //   6. Variants validation (if Variants provided)
 //
 // Edge Cases:
-//   - All fields empty: Multiple validation errors returned
+//   - All required fields (e.g., Key, Env) empty: Multiple validation errors returned for those fields
 //   - Some fields valid, some invalid: Only invalid fields have errors
 //   - ConfigJSON empty: Config size validation skipped
 //   - Variants empty: Variant validation skipped

@@ -43,7 +43,7 @@
 //
 // No Mocking Required:
 //
-//   All dependencies (snapshot, rollout, targeting) have their own tests.
+//   All dependencies (snapshot, rollout, targeting) are tested independently.
 //   This package tests integration of those components.
 package evaluation
 

@@ -150,7 +150,7 @@ func ValidateVariants(variants []Variant) error {
 //   - flagKey="": Proceeds with empty key (unusual but valid)
 //   - salt="": Proceeds with empty salt (valid but reduces hash quality)
 //   - Validation fails: Returns ("", error) — invalid variant configuration
-//   - bucket >= 100: Should never happen, returns last variant as fallback
+//   - bucket >= 100: Impossible (BucketUser returns [0, 99]), but handled as last-variant fallback for safety
 //
 // Deterministic Behavior:
 //   Same (userID, flagKey, variants, salt) always produces same variant assignment.

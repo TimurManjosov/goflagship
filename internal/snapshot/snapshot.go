@@ -175,14 +175,17 @@ func storeSnapshot(snapshot *Snapshot) {
 //   - rows is nil: Returns snapshot with empty flags map
 //   - rows is empty: Returns snapshot with empty flags map
 //   - rows contains duplicate keys: Last row wins (map overwrite)
-//   - row.Config is invalid JSON: Config is set to nil, no error returned
+//   - row.Config is invalid JSON: Config is set to nil, no error returned (see below)
 //   - row.Description is null: Converted to empty string
 //   - row.Expression is null: Set to nil (no expression)
 //
 // JSON Unmarshaling:
-//   - Config unmarshal errors are silently ignored
-//   - Invalid JSON results in nil config, not an error
-//   - This is lenient to support partial/legacy data
+//   - Config unmarshal errors are silently ignored and never returned from this function.
+//   - Invalid JSON results in nil config, not an error or log entry.
+//   - This behavior is intentionally lenient to support partial/legacy and occasionally
+//     corrupted data already stored in the database without breaking flag loading.
+//   - Callers MUST NOT rely on this function to validate configuration JSON; validation
+//     and error reporting should be performed at write time or via separate tooling.
 //
 // Usage:
 //   This is used when loading flags directly from PostgreSQL queries.

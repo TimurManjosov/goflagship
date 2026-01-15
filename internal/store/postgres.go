@@ -99,7 +99,8 @@ func (p *PostgresStore) GetAllFlags(ctx context.Context, env string) ([]Flag, er
 //
 // Edge Cases:
 //   - key="": Likely returns "flag not found" (unless empty key exists in DB)
-//   - Multiple flags with same key: Returns first match (DB should prevent this)
+//   - Multiple flags with same (key, env): Returns first match (DB/schema should prevent this)
+//   - Multiple environments with same key: Behavior depends on underlying query ordering and may be ambiguous
 //   - Flag exists but has invalid JSON config: Returns error
 //
 // Error Types:
