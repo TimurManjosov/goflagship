@@ -29,8 +29,40 @@ var ErrInvalidExpression = errors.New("invalid expression: not valid JSON Logic"
 var ErrEmptyExpression = errors.New("invalid expression: empty or whitespace")
 
 // Evaluate evaluates a JSON Logic expression against a user context.
-// Returns true if the user matches the expression, false otherwise.
-// Returns an error if the expression is invalid.
+//
+// Preconditions:
+//   - expression should be valid JSON Logic (validation recommended via ValidateExpression)
+//   - ctx may be nil or empty (will be treated as empty context)
+//
+// Postconditions:
+//   - Returns (true, nil) if user matches expression
+//   - Returns (false, nil) if user doesn't match expression
+//   - Returns (false, error) if expression is invalid or evaluation fails
+//   - Never returns (true, non-nil error)
+//
+// Expression Format:
+//   Uses JSON Logic (jsonlogic.com) syntax. Examples:
+//   - {"==": [{"var": "plan"}, "premium"]} — checks if user.plan == "premium"
+//   - {"in": [{"var": "country"}, ["US", "CA"]]} — checks if user.country in ["US", "CA"]
+//   - {"and": [...]} — combines multiple conditions
+//
+// Result Interpretation:
+//   Uses JavaScript-like truthiness rules:
+//   - true: non-zero numbers, non-empty strings, non-empty arrays/objects, boolean true
+//   - false: null, 0, "", [], {}, boolean false
+//
+// Edge Cases:
+//   - expression is empty or whitespace: Returns (false, ErrEmptyExpression)
+//   - expression is invalid JSON: Returns (false, ErrInvalidExpression)
+//   - expression is valid JSON but invalid JSON Logic: Returns (false, ErrInvalidExpression)
+//   - ctx is nil: Treated as empty context {}
+//   - ctx has no matching keys: Expression may still evaluate (depends on logic)
+//   - expression references non-existent ctx keys: Treated as undefined (falsy)
+//
+// Error Cases:
+//   - ErrEmptyExpression: expression is empty or whitespace only
+//   - ErrInvalidExpression: expression is not valid JSON or JSON Logic
+//   - Other errors: JSON marshaling failures (rare)
 func Evaluate(expression string, ctx UserContext) (bool, error) {
 	if strings.TrimSpace(expression) == "" {
 		return false, ErrEmptyExpression
@@ -63,7 +95,30 @@ func Evaluate(expression string, ctx UserContext) (bool, error) {
 }
 
 // ValidateExpression checks if an expression is valid JSON Logic.
-// Returns nil if valid, or an error describing why it's invalid.
+//
+// Preconditions:
+//   - expression may be any string
+//
+// Postconditions:
+//   - Returns nil if expression is valid JSON Logic
+//   - Returns error describing why expression is invalid
+//   - Does not evaluate expression against real data (uses empty context)
+//
+// Validation Steps:
+//   1. Check if expression is empty/whitespace → ErrEmptyExpression
+//   2. Check if expression is valid JSON → ErrInvalidExpression
+//   3. Check if expression is valid JSON Logic → ErrInvalidExpression
+//
+// Edge Cases:
+//   - expression is empty: Returns ErrEmptyExpression
+//   - expression is whitespace only: Returns ErrEmptyExpression
+//   - expression is valid JSON but invalid JSON Logic: Returns ErrInvalidExpression
+//   - expression is "{}" (empty object): Valid (always evaluates to falsy)
+//   - expression references undefined variables: Valid (variables evaluated at runtime)
+//
+// Usage:
+//   Use this before storing expressions in database to catch syntax errors early.
+//   Does not validate that expression makes semantic sense for your domain.
 func ValidateExpression(expression string) error {
 	if strings.TrimSpace(expression) == "" {
 		return ErrEmptyExpression
