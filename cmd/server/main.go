@@ -49,6 +49,15 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// Validate configuration for production readiness
+	// This ensures required fields are set and values are within safe ranges
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("configuration validation failed: %v\n\nPlease check your environment variables or .env file.\nSee .env.example for required configuration.", err)
+	}
+
+	log.Printf("[server] configuration loaded: env=%s store=%s http=%s metrics=%s", 
+		cfg.Env, cfg.StoreType, cfg.HTTPAddr, cfg.MetricsAddr)
+
 	// Prometheus registry
 	telemetry.Init()
 

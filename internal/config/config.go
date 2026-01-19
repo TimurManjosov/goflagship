@@ -5,6 +5,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log"
 
 	"github.com/spf13/viper"
@@ -48,6 +49,11 @@ func generateRandomSalt() string {
 // Load reads configuration from environment variables and .env file (if present).
 // Environment variables take precedence over .env file values.
 // Returns a Config struct with all values populated (either from env or defaults).
+//
+// Validation:
+//   This function performs basic configuration loading but does NOT validate
+//   configuration constraints (e.g., postgres store requires valid DSN).
+//   Use Validate() method to check production-readiness constraints.
 func Load() (*Config, error) {
 	viperInstance := viper.New()
 	viperInstance.SetConfigFile(".env") // Optional; silently ignored if file doesn't exist
@@ -101,4 +107,105 @@ func getOrGenerateRolloutSalt(v *viper.Viper) string {
 		log.Printf(rolloutSaltWarningMsg, rolloutSalt)
 	}
 	return rolloutSalt
+}
+
+// ValidationError represents a configuration validation error with details about what failed.
+type ValidationError struct {
+	Field   string // Name of the configuration field
+	Message string // Human-readable error message
+}
+
+// Error implements the error interface.
+func (e ValidationError) Error() string {
+	return fmt.Sprintf("config validation failed [%s]: %s", e.Field, e.Message)
+}
+
+// Validate checks that the configuration is suitable for production use.
+//
+// This performs stricter validation than Load() and is intended to be called
+// at application startup to fail fast on misconfiguration.
+//
+// Validation Rules:
+//   1. StoreType must be one of: "memory", "postgres"
+//   2. If StoreType is "postgres", DatabaseDSN must be non-empty
+//   3. HTTPAddr must be non-empty
+//   4. MetricsAddr must be non-empty
+//   5. Env must be non-empty
+//   6. RolloutSalt must be non-empty (enforced for production safety)
+//
+// Production Safety:
+//   In production (AppEnv != "dev"), additional constraints apply:
+//   - AdminAPIKey must not be the default value "admin-123"
+//   - RolloutSalt should be explicitly configured (not auto-generated)
+//
+// Returns:
+//   - nil if configuration is valid
+//   - ValidationError describing the first validation failure
+//
+// Example:
+//   cfg, _ := config.Load()
+//   if err := cfg.Validate(); err != nil {
+//       log.Fatalf("Configuration error: %v", err)
+//   }
+func (c *Config) Validate() error {
+	// 1. Validate store type
+	if c.StoreType != "memory" && c.StoreType != "postgres" {
+		return ValidationError{
+			Field:   "STORE_TYPE",
+			Message: fmt.Sprintf("must be 'memory' or 'postgres', got '%s'", c.StoreType),
+		}
+	}
+
+	// 2. If using postgres, DSN is required
+	if c.StoreType == "postgres" && c.DatabaseDSN == "" {
+		return ValidationError{
+			Field:   "DB_DSN",
+			Message: "database DSN is required when STORE_TYPE=postgres",
+		}
+	}
+
+	// 3. HTTP address is required
+	if c.HTTPAddr == "" {
+		return ValidationError{
+			Field:   "APP_HTTP_ADDR",
+			Message: "HTTP server address cannot be empty",
+		}
+	}
+
+	// 4. Metrics address is required
+	if c.MetricsAddr == "" {
+		return ValidationError{
+			Field:   "METRICS_ADDR",
+			Message: "metrics server address cannot be empty",
+		}
+	}
+
+	// 5. Environment name is required
+	if c.Env == "" {
+		return ValidationError{
+			Field:   "ENV",
+			Message: "environment name cannot be empty",
+		}
+	}
+
+	// 6. Rollout salt is required (critical for deterministic bucketing)
+	if c.RolloutSalt == "" {
+		return ValidationError{
+			Field:   "ROLLOUT_SALT",
+			Message: "rollout salt cannot be empty (required for consistent user bucketing)",
+		}
+	}
+
+	// Production-specific checks (stricter validation)
+	if c.AppEnv == "prod" || c.AppEnv == "production" {
+		// In production, admin key must not be the default
+		if c.AdminAPIKey == "admin-123" {
+			return ValidationError{
+				Field:   "ADMIN_API_KEY",
+				Message: "default admin API key 'admin-123' is not allowed in production",
+			}
+		}
+	}
+
+	return nil
 }
