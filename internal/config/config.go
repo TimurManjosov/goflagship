@@ -27,6 +27,7 @@ type Config struct {
 	RateLimitAdminPerKey int    // Rate limit for admin operations per key
 	AuthTokenPrefix      string // Prefix for API tokens (e.g., "fsk_")
 	RolloutSalt          string // Salt for deterministic user bucketing in rollouts
+	rolloutSaltGenerated bool   // internal: tracks if rollout salt was auto-generated
 }
 
 const (
@@ -61,7 +62,7 @@ func Load() (*Config, error) {
 	viperInstance.AutomaticEnv()        // Read from environment variables
 
 	setConfigDefaults(viperInstance)
-	rolloutSalt := getOrGenerateRolloutSalt(viperInstance)
+	rolloutSalt, rolloutSaltGenerated := getOrGenerateRolloutSalt(viperInstance)
 
 	return &Config{
 		AppEnv:               viperInstance.GetString("APP_ENV"),
@@ -77,6 +78,7 @@ func Load() (*Config, error) {
 		RateLimitAdminPerKey: viperInstance.GetInt("RATE_LIMIT_ADMIN_PER_KEY"),
 		AuthTokenPrefix:      viperInstance.GetString("AUTH_TOKEN_PREFIX"),
 		RolloutSalt:          rolloutSalt,
+		rolloutSaltGenerated: rolloutSaltGenerated,
 	}, nil
 }
 
@@ -100,13 +102,15 @@ func setConfigDefaults(v *viper.Viper) {
 // getOrGenerateRolloutSalt retrieves the ROLLOUT_SALT from config or generates a random one.
 // Logs a warning if a random salt is generated, as this will cause inconsistent user bucketing
 // across server restarts. In production, ROLLOUT_SALT must be explicitly set.
-func getOrGenerateRolloutSalt(v *viper.Viper) string {
+// Returns the salt and a boolean indicating if it was auto-generated.
+func getOrGenerateRolloutSalt(v *viper.Viper) (string, bool) {
 	rolloutSalt := v.GetString("ROLLOUT_SALT")
 	if rolloutSalt == "" {
 		rolloutSalt = generateRandomSalt()
 		log.Printf(rolloutSaltWarningMsg, rolloutSalt)
+		return rolloutSalt, true // Salt was auto-generated
 	}
-	return rolloutSalt
+	return rolloutSalt, false // Salt was explicitly configured
 }
 
 // ValidationError represents a configuration validation error with details about what failed.
@@ -189,6 +193,8 @@ func (c *Config) Validate() error {
 	}
 
 	// 6. Rollout salt is required (critical for deterministic bucketing)
+	// Note: Empty check is redundant since getOrGenerateRolloutSalt always returns a value,
+	// but we check for auto-generation in production mode below.
 	if c.RolloutSalt == "" {
 		return ValidationError{
 			Field:   "ROLLOUT_SALT",
@@ -203,6 +209,14 @@ func (c *Config) Validate() error {
 			return ValidationError{
 				Field:   "ADMIN_API_KEY",
 				Message: "default admin API key 'admin-123' is not allowed in production",
+			}
+		}
+		
+		// In production, rollout salt must be explicitly configured (not auto-generated)
+		if c.rolloutSaltGenerated {
+			return ValidationError{
+				Field:   "ROLLOUT_SALT",
+				Message: "rollout salt must be explicitly configured in production (not auto-generated). Set ROLLOUT_SALT environment variable.",
 			}
 		}
 	}
