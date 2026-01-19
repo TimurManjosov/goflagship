@@ -70,6 +70,32 @@ type Server struct {
 	webhookDispatcher *webhook.Dispatcher
 }
 
+// NewServer creates a new API server with the given store, environment, and admin key.
+//
+// Parameters:
+//   - s: Store implementation (postgres or memory). Must not be nil.
+//   - env: Environment name for flag operations (e.g., "prod", "dev"). Must not be empty.
+//   - adminKey: Legacy admin API key for backward compatibility. May be empty if using database keys.
+//
+// Initialization:
+//   1. Creates authenticator with optional key store (if store supports it)
+//   2. Creates audit service (if store supports postgres operations)
+//   3. Creates and starts webhook dispatcher (if store supports postgres operations)
+//
+// Runtime Invariants:
+//   - s.store is never nil (set at construction)
+//   - s.auth is never nil (always created)
+//   - s.auditService may be nil (only for non-postgres stores)
+//   - s.webhookDispatcher may be nil (only for non-postgres stores)
+//
+// Graceful Degradation:
+//   When using in-memory store, audit and webhook features are disabled but the
+//   server remains fully functional for flag operations. Handlers check for nil
+//   before using these optional services.
+//
+// Thread Safety:
+//   The returned Server is safe for concurrent use. The webhook dispatcher runs
+//   in a background goroutine if present.
 func NewServer(s store.Store, env, adminKey string) *Server {
 	// Create authenticator with key store
 	var keyStore auth.KeyStore

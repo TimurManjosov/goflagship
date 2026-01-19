@@ -73,6 +73,18 @@ func main() {
 	}
 	defer st.Close()
 
+	// For postgres stores, verify database connectivity before proceeding
+	if cfg.StoreType == "postgres" {
+		// Attempt to verify connectivity by loading flags (will fail if DB unreachable)
+		log.Printf("[server] verifying database connectivity...")
+		testCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if _, err := st.GetAllFlags(testCtx, cfg.Env); err != nil {
+			log.Fatalf("database connectivity check failed: %v\n\nPlease verify:\n  - PostgreSQL is running\n  - DB_DSN is correct: %s\n  - Database exists and migrations are applied", err, cfg.DatabaseDSN)
+		}
+		log.Printf("[server] database connectivity verified")
+	}
+
 	// Load initial flag snapshot into memory
 	flags, err := st.GetAllFlags(ctx, cfg.Env)
 	if err != nil {
