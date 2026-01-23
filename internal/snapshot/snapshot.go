@@ -105,6 +105,10 @@ var (
 // re-bucketed into potentially different rollout groups. This can cause feature visibility
 // to change unexpectedly for end users.
 //
+// Validation: If salt is empty, this function logs a critical warning but does NOT panic.
+// Empty salt will result in predictable (non-random) hashing behavior which may be
+// acceptable for testing but is NOT recommended for production.
+//
 // Example:
 //   func main() {
 //       salt := os.Getenv("ROLLOUT_SALT")
@@ -115,6 +119,11 @@ var (
 //       // ... rest of application setup
 //   }
 func SetRolloutSalt(salt string) {
+	if salt == "" {
+		log.Printf("[snapshot] CRITICAL: SetRolloutSalt called with empty salt. User bucketing will be predictable (not random). This is unsafe for production.")
+	} else {
+		log.Printf("[snapshot] rollout salt configured (length=%d)", len(salt))
+	}
 	rolloutSalt = salt
 }
 

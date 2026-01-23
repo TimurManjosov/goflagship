@@ -28,6 +28,7 @@ type Config struct {
 	RateLimitAdminPerKey int    // Rate limit for admin operations per key
 	AuthTokenPrefix      string // Prefix for API tokens (e.g., "fsk_")
 	RolloutSalt          string // Salt for deterministic user bucketing in rollouts
+	rolloutSaltGenerated bool   // internal: tracks if rollout salt was auto-generated
 }
 
 const (
@@ -51,6 +52,11 @@ func generateRandomSalt() string {
 // Load reads configuration from environment variables and .env file (if present).
 // Environment variables take precedence over .env file values.
 // Returns a Config struct with all values populated (either from env or defaults).
+//
+// Validation:
+//   This function performs basic configuration loading but does NOT validate
+//   configuration constraints (e.g., postgres store requires valid DSN).
+//   Use Validate() method to check production-readiness constraints.
 func Load() (*Config, error) {
 	viperInstance := viper.New()
 	viperInstance.SetConfigFile(".env") // Optional; silently ignored if file doesn't exist

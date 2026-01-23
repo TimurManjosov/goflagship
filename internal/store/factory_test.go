@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -43,9 +44,10 @@ func TestNewStore_UnsupportedType(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for unsupported store type")
 	}
-	expectedMsg := "unsupported store type: invalid-type"
-	if err.Error() != expectedMsg {
-		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, err.Error())
+	// The error message now includes additional context, so just check it contains the key parts
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "unsupported store type") || !strings.Contains(errMsg, "invalid-type") {
+		t.Errorf("Expected error message to mention unsupported type and invalid-type, got '%s'", errMsg)
 	}
 }
 
@@ -71,6 +73,18 @@ func TestNewStore_EmptyDSNForMemory(t *testing.T) {
 		t.Fatal("Expected non-nil store")
 	}
 	store.Close()
+}
+
+func TestNewStore_PostgresRequiresDSN(t *testing.T) {
+	ctx := context.Background()
+	// Postgres store requires a DSN
+	_, err := NewStore(ctx, "postgres", "")
+	if err == nil {
+		t.Fatal("Expected error when creating postgres store with empty DSN")
+	}
+	if !strings.Contains(err.Error(), "DSN cannot be empty") {
+		t.Errorf("Expected error about empty DSN, got: %v", err)
+	}
 }
 
 func TestNewStore_CaseSensitivity(t *testing.T) {

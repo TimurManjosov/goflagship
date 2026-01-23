@@ -49,6 +49,15 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// Validate configuration for production readiness
+	// This ensures required fields are set and values are within safe ranges
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("configuration validation failed: %v\n\nPlease check your environment variables or .env file.\nSee .env.example for required configuration.", err)
+	}
+
+	log.Printf("[server] configuration loaded: env=%s store=%s http=%s metrics=%s", 
+		cfg.Env, cfg.StoreType, cfg.HTTPAddr, cfg.MetricsAddr)
+
 	// Prometheus registry
 	telemetry.Init()
 
@@ -63,6 +72,18 @@ func main() {
 		log.Fatalf("failed to initialize store (type=%s): %v", cfg.StoreType, err)
 	}
 	defer st.Close()
+
+	// For postgres stores, verify database connectivity before proceeding
+	if cfg.StoreType == "postgres" {
+		// Attempt to verify connectivity by loading flags (will fail if DB unreachable)
+		log.Printf("[server] verifying database connectivity...")
+		testCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if _, err := st.GetAllFlags(testCtx, cfg.Env); err != nil {
+			log.Fatalf("database connectivity check failed: %v\n\nPlease verify:\n  - PostgreSQL is running\n  - DB_DSN is correct: %s\n  - Database exists and migrations are applied", err, cfg.DatabaseDSN)
+		}
+		log.Printf("[server] database connectivity verified")
+	}
 
 	// Load initial flag snapshot into memory
 	flags, err := st.GetAllFlags(ctx, cfg.Env)
