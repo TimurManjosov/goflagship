@@ -3,6 +3,7 @@ module github.com/TimurManjosov/goflagship
 go 1.25.3
 
 require (
+	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diegoholiveira/jsonlogic/v3 v3.8.6
 	github.com/go-chi/chi/v5 v5.2.3
@@ -15,7 +16,6 @@ require (
 )
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/barkimedes/go-deepcopy v0.0.0-20220514131651-17c30cfc62df // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/clipperhouse/displaywidth v0.6.0 // indirect

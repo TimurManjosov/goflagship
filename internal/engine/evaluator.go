@@ -124,6 +124,8 @@ func selectVariant(flagKey string, ctx *UserContext, config map[string]any, dist
 	return keys[len(keys)-1]
 }
 
+// hashBucket returns a deterministic bucket in [0,total) for flag/user/salt.
+// It returns -1 when input cannot be bucketed (missing user ID or invalid total).
 func hashBucket(flagKey string, ctx *UserContext, config map[string]any, total int) int {
 	if ctx == nil || ctx.ID == "" || total <= 0 {
 		return -1
@@ -153,6 +155,8 @@ func distributionTotal(distribution map[string]int) int {
 	return total
 }
 
+// defaultDistribution builds base rollout distribution from variants.
+// When no variants are configured, it falls back to 100% control.
 func defaultDistribution(flag *store.Flag) map[string]int {
 	if len(flag.Variants) == 0 {
 		return map[string]int{defaultVariant: 100}

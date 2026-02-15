@@ -49,7 +49,9 @@ var (
 		opVersionGT:  semverCompareHandler{cmp: func(a, b *semver.Version) bool { return a.GreaterThan(b) }},
 		opVersionLT:  semverCompareHandler{cmp: func(a, b *semver.Version) bool { return a.LessThan(b) }},
 	}
-	regexCache sync.Map // map[string]*regexp.Regexp
+	// regexCache keeps compiled regex by pattern for the hot evaluation path.
+	// Expected value type is *regexp.Regexp.
+	regexCache sync.Map
 )
 
 func getOperatorHandler(op rules.Operator) (OperatorHandler, bool) {
@@ -306,12 +308,6 @@ func equalsString(left, right string) bool {
 }
 
 func normalizeCase(value string) string {
-	if isCaseSensitive() {
-		return value
-	}
-	return strings.ToLower(value)
-}
-
-func isCaseSensitive() bool {
-	return true
+	// Keep case policy centralized; current behavior is case-sensitive.
+	return value
 }

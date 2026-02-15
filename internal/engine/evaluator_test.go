@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/TimurManjosov/goflagship/internal/rules"
@@ -146,8 +147,14 @@ func TestEvaluate_DistributionDeterminismAndMapOrder(t *testing.T) {
 	if v1 == "" || v2 == "" {
 		t.Fatalf("expected non-empty variants for deterministic spread")
 	}
-	if hashBucket(flag.Key, &UserContext{ID: "user-1"}, nil, 10000) == hashBucket(flag.Key, &UserContext{ID: "user-2"}, nil, 10000) {
-		t.Fatalf("expected different users to produce different buckets")
+
+	seenBuckets := map[int]struct{}{}
+	for i := 0; i < 20; i++ {
+		bucket := hashBucket(flag.Key, &UserContext{ID: "user-" + strconv.Itoa(i)}, nil, 10000)
+		seenBuckets[bucket] = struct{}{}
+	}
+	if len(seenBuckets) < 2 {
+		t.Fatalf("expected spread across multiple buckets, got %d unique buckets", len(seenBuckets))
 	}
 }
 
@@ -172,7 +179,10 @@ func TestEvaluate_ContextLookupAndSafety(t *testing.T) {
 	}
 
 	nilRules := &store.Flag{Key: "empty", Enabled: true}
-	_ = Evaluate(nilRules, ctx)
+	nilRulesResult := Evaluate(nilRules, ctx)
+	if nilRulesResult.Reason != string(ReasonDefaultRollout) {
+		t.Fatalf("Reason = %s, want %s", nilRulesResult.Reason, ReasonDefaultRollout)
+	}
 
 	unknownOperator := &store.Flag{
 		Key:     "unknown-op",
