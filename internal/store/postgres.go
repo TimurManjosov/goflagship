@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
+	"github.com/TimurManjosov/goflagship/internal/rules"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,8 +20,9 @@ const (
 // PostgresStore is a PostgreSQL implementation of the Store interface.
 //
 // Thread Safety:
-//   All methods are safe for concurrent access via pgxpool connection pooling.
-//   The underlying connection pool manages concurrency and connection lifecycle.
+//
+//	All methods are safe for concurrent access via pgxpool connection pooling.
+//	The underlying connection pool manages concurrency and connection lifecycle.
 //
 // Error Handling:
 //   - Database errors are returned as-is (wrapped pgx errors)
@@ -32,9 +35,9 @@ const (
 //   - After Close(), no methods should be called
 //
 // Lifecycle:
-//   1. Create: NewPostgresStore(pool)
-//   2. Use: Call GetAllFlags, UpsertFlag, etc.
-//   3. Cleanup: Close() to release resources
+//  1. Create: NewPostgresStore(pool)
+//  2. Use: Call GetAllFlags, UpsertFlag, etc.
+//  3. Cleanup: Close() to release resources
 type PostgresStore struct {
 	pool *pgxpool.Pool
 	q    *dbgen.Queries
@@ -66,8 +69,9 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 //   - Invalid JSON in config: Returns error (conversion fails)
 //
 // Performance:
-//   Pre-allocates result slice with capacity = query result size.
-//   Converts all rows to domain objects before returning.
+//
+//	Pre-allocates result slice with capacity = query result size.
+//	Converts all rows to domain objects before returning.
 func (p *PostgresStore) GetAllFlags(ctx context.Context, env string) ([]Flag, error) {
 	dbFlags, err := p.q.GetAllFlags(ctx, env)
 	if err != nil {
@@ -138,8 +142,9 @@ func (p *PostgresStore) GetFlagByKey(ctx context.Context, key string) (*Flag, er
 //   - If flag doesn't exist, it's created
 //
 // Idempotent:
-//   Calling with same params multiple times produces same result.
-//   Safe to retry on transient failures.
+//
+//	Calling with same params multiple times produces same result.
+//	Safe to retry on transient failures.
 //
 // Edge Cases:
 //   - params.Config=nil: Stored as {} (empty JSON object)
@@ -150,7 +155,8 @@ func (p *PostgresStore) GetFlagByKey(ctx context.Context, key string) (*Flag, er
 //   - Key/Env combination exists: Updates existing flag
 //
 // Database Constraints:
-//   Primary key: (key, env) - ensures uniqueness per environment
+//
+//	Primary key: (key, env) - ensures uniqueness per environment
 func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) error {
 	// Convert config map to JSON bytes
 	var configBytes []byte
@@ -164,14 +170,20 @@ func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) err
 		configBytes = []byte(emptyJSONObject)
 	}
 
+	targetingRulesBytes, err := json.Marshal(ensureRulesInitialized(params.TargetingRules))
+	if err != nil {
+		return fmt.Errorf("marshal targeting rules: %w", err)
+	}
+
 	dbParams := dbgen.UpsertFlagParams{
-		Key:         params.Key,
-		Description: pgtype.Text{String: params.Description, Valid: true},
-		Enabled:     params.Enabled,
-		Rollout:     params.Rollout,
-		Expression:  params.Expression,
-		Config:      configBytes,
-		Env:         params.Env,
+		Key:            params.Key,
+		Description:    pgtype.Text{String: params.Description, Valid: true},
+		Enabled:        params.Enabled,
+		Rollout:        params.Rollout,
+		Expression:     params.Expression,
+		Config:         configBytes,
+		TargetingRules: targetingRulesBytes,
+		Env:            params.Env,
 	}
 
 	return p.q.UpsertFlag(ctx, dbParams)
@@ -194,8 +206,9 @@ func (p *PostgresStore) UpsertFlag(ctx context.Context, params UpsertParams) err
 //   - Database error: Returns error
 //
 // Idempotent:
-//   Safe to call multiple times with same parameters.
-//   Deleting a flag that doesn't exist is considered success.
+//
+//	Safe to call multiple times with same parameters.
+//	Deleting a flag that doesn't exist is considered success.
 func (p *PostgresStore) DeleteFlag(ctx context.Context, key, env string) error {
 	return p.q.DeleteFlag(ctx, dbgen.DeleteFlagParams{
 		Key: key,
@@ -214,7 +227,8 @@ func (p *PostgresStore) DeleteFlag(ctx context.Context, key, env string) error {
 //   - Safe to call multiple times (subsequent calls are no-ops)
 //
 // Thread Safety:
-//   Safe to call from multiple goroutines (pgxpool handles this).
+//
+//	Safe to call from multiple goroutines (pgxpool handles this).
 //
 // Edge Cases:
 //   - Pool already closed: No error, no-op
@@ -303,14 +317,41 @@ func (p *PostgresStore) convertFromDB(dbFlag dbgen.Flag) (Flag, error) {
 		description = dbFlag.Description.String
 	}
 
+	targetingRules, err := unmarshalTargetingRules(dbFlag.TargetingRules)
+	if err != nil {
+		return Flag{}, fmt.Errorf("unmarshal targeting rules: %w", err)
+	}
+
 	return Flag{
-		Key:         dbFlag.Key,
-		Description: description,
-		Enabled:     dbFlag.Enabled,
-		Rollout:     dbFlag.Rollout,
-		Expression:  dbFlag.Expression,
-		Config:      config,
-		Env:         dbFlag.Env,
-		UpdatedAt:   dbFlag.UpdatedAt.Time,
+		Key:            dbFlag.Key,
+		Description:    description,
+		Enabled:        dbFlag.Enabled,
+		Rollout:        dbFlag.Rollout,
+		Expression:     dbFlag.Expression,
+		Config:         config,
+		TargetingRules: targetingRules,
+		Env:            dbFlag.Env,
+		UpdatedAt:      dbFlag.UpdatedAt.Time,
 	}, nil
+}
+
+func ensureRulesInitialized(rs []rules.Rule) []rules.Rule {
+	if rs == nil {
+		return make([]rules.Rule, 0)
+	}
+
+	return rs
+}
+
+func unmarshalTargetingRules(raw json.RawMessage) ([]rules.Rule, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return make([]rules.Rule, 0), nil
+	}
+
+	var rs []rules.Rule
+	if err := json.Unmarshal(raw, &rs); err != nil {
+		return nil, err
+	}
+
+	return ensureRulesInitialized(rs), nil
 }

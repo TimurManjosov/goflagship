@@ -26,7 +26,7 @@ func (q *Queries) DeleteFlag(ctx context.Context, arg DeleteFlagParams) error {
 }
 
 const getAllFlags = `-- name: GetAllFlags :many
-SELECT id, key, description, enabled, rollout, expression, config, env, updated_at FROM flags WHERE env = $1 ORDER BY key
+SELECT id, key, description, enabled, rollout, expression, config, targeting_rules, env, updated_at FROM flags WHERE env = $1 ORDER BY key
 `
 
 func (q *Queries) GetAllFlags(ctx context.Context, env string) ([]Flag, error) {
@@ -46,6 +46,7 @@ func (q *Queries) GetAllFlags(ctx context.Context, env string) ([]Flag, error) {
 			&i.Rollout,
 			&i.Expression,
 			&i.Config,
+			&i.TargetingRules,
 			&i.Env,
 			&i.UpdatedAt,
 		); err != nil {
@@ -60,7 +61,7 @@ func (q *Queries) GetAllFlags(ctx context.Context, env string) ([]Flag, error) {
 }
 
 const getFlagByKey = `-- name: GetFlagByKey :one
-SELECT id, key, description, enabled, rollout, expression, config, env, updated_at FROM flags WHERE key = $1
+SELECT id, key, description, enabled, rollout, expression, config, targeting_rules, env, updated_at FROM flags WHERE key = $1
 `
 
 func (q *Queries) GetFlagByKey(ctx context.Context, key string) (Flag, error) {
@@ -74,6 +75,7 @@ func (q *Queries) GetFlagByKey(ctx context.Context, key string) (Flag, error) {
 		&i.Rollout,
 		&i.Expression,
 		&i.Config,
+		&i.TargetingRules,
 		&i.Env,
 		&i.UpdatedAt,
 	)
@@ -81,26 +83,28 @@ func (q *Queries) GetFlagByKey(ctx context.Context, key string) (Flag, error) {
 }
 
 const upsertFlag = `-- name: UpsertFlag :exec
-INSERT INTO flags (key, description, enabled, rollout, expression, config, env)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO flags (key, description, enabled, rollout, expression, config, targeting_rules, env)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (key) DO UPDATE SET
   description = EXCLUDED.description,
   enabled     = EXCLUDED.enabled,
   rollout     = EXCLUDED.rollout,
   expression  = EXCLUDED.expression,
   config      = EXCLUDED.config,
+  targeting_rules = EXCLUDED.targeting_rules,
   env         = EXCLUDED.env,
   updated_at  = now()
 `
 
 type UpsertFlagParams struct {
-	Key         string      `json:"key"`
-	Description pgtype.Text `json:"description"`
-	Enabled     bool        `json:"enabled"`
-	Rollout     int32       `json:"rollout"`
-	Expression  *string     `json:"expression"`
-	Config      []byte      `json:"config"`
-	Env         string      `json:"env"`
+	Key            string      `json:"key"`
+	Description    pgtype.Text `json:"description"`
+	Enabled        bool        `json:"enabled"`
+	Rollout        int32       `json:"rollout"`
+	Expression     *string     `json:"expression"`
+	Config         []byte      `json:"config"`
+	TargetingRules []byte      `json:"targeting_rules"`
+	Env            string      `json:"env"`
 }
 
 func (q *Queries) UpsertFlag(ctx context.Context, arg UpsertFlagParams) error {
@@ -111,6 +115,7 @@ func (q *Queries) UpsertFlag(ctx context.Context, arg UpsertFlagParams) error {
 		arg.Rollout,
 		arg.Expression,
 		arg.Config,
+		arg.TargetingRules,
 		arg.Env,
 	)
 	return err

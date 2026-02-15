@@ -89,15 +89,16 @@ type AuditLog struct {
 }
 
 type Flag struct {
-	ID          pgtype.UUID        `json:"id"`
-	Key         string             `json:"key"`
-	Description pgtype.Text        `json:"description"`
-	Enabled     bool               `json:"enabled"`
-	Rollout     int32              `json:"rollout"`
-	Expression  *string            `json:"expression"`
-	Config      []byte             `json:"config"`
-	Env         string             `json:"env"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID             pgtype.UUID        `json:"id"`
+	Key            string             `json:"key"`
+	Description    pgtype.Text        `json:"description"`
+	Enabled        bool               `json:"enabled"`
+	Rollout        int32              `json:"rollout"`
+	Expression     *string            `json:"expression"`
+	Config         []byte             `json:"config"`
+	TargetingRules []byte             `json:"targeting_rules"`
+	Env            string             `json:"env"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Webhook struct {

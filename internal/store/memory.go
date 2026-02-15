@@ -56,15 +56,16 @@ func (m *MemoryStore) UpsertFlag(ctx context.Context, params UpsertParams) error
 	defer m.mu.Unlock()
 
 	flag := Flag{
-		Key:         params.Key,
-		Description: params.Description,
-		Enabled:     params.Enabled,
-		Rollout:     params.Rollout,
-		Expression:  params.Expression,
-		Config:      params.Config,
-		Variants:    params.Variants,
-		Env:         params.Env,
-		UpdatedAt:   time.Now().UTC(),
+		Key:            params.Key,
+		Description:    params.Description,
+		Enabled:        params.Enabled,
+		Rollout:        params.Rollout,
+		Expression:     params.Expression,
+		Config:         params.Config,
+		TargetingRules: ensureRulesInitialized(params.TargetingRules),
+		Variants:       params.Variants,
+		Env:            params.Env,
+		UpdatedAt:      time.Now().UTC(),
 	}
 
 	m.flags[params.Key] = flag
