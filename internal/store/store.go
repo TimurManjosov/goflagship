@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/TimurManjosov/goflagship/internal/rules"
 )
 
 // Store defines the interface for flag persistence operations.
@@ -38,25 +40,27 @@ type Variant struct {
 
 // Flag represents a feature flag with all its attributes.
 type Flag struct {
-	Key         string         `json:"key"`
-	Description string         `json:"description"`
-	Enabled     bool           `json:"enabled"`
-	Rollout     int32          `json:"rollout"`
-	Expression  *string        `json:"expression,omitempty"`
-	Config      map[string]any `json:"config,omitempty"`
-	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
-	Env         string         `json:"env"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
+	Key            string         `json:"key"`
+	Description    string         `json:"description"`
+	Enabled        bool           `json:"enabled"`
+	Rollout        int32          `json:"rollout"`
+	Expression     *string        `json:"expression,omitempty"`
+	Config         map[string]any `json:"config,omitempty"`
+	TargetingRules []rules.Rule   `json:"targetingRules"`
+	Variants       []Variant      `json:"variants,omitempty"` // For A/B testing
+	Env            string         `json:"env"`
+	UpdatedAt      time.Time      `json:"updatedAt"`
 }
 
 // UpsertParams contains the parameters for upserting a flag.
 type UpsertParams struct {
-	Key         string         `json:"key"`
-	Description string         `json:"description"`
-	Enabled     bool           `json:"enabled"`
-	Rollout     int32          `json:"rollout"`
-	Expression  *string        `json:"expression,omitempty"`
-	Config      map[string]any `json:"config,omitempty"`
-	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
-	Env         string         `json:"env"`
+	Key            string         `json:"key"`
+	Description    string         `json:"description"`
+	Enabled        bool           `json:"enabled"`
+	Rollout        int32          `json:"rollout"`
+	Expression     *string        `json:"expression,omitempty"`
+	Config         map[string]any `json:"config,omitempty"`
+	TargetingRules []rules.Rule   `json:"targetingRules"`
+	Variants       []Variant      `json:"variants,omitempty"` // For A/B testing
+	Env            string         `json:"env"`
 }
