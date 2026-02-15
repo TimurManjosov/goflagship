@@ -3,6 +3,7 @@ module github.com/TimurManjosov/goflagship
 go 1.25.3
 
 require (
+	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/diegoholiveira/jsonlogic/v3 v3.8.6
 	github.com/go-chi/chi/v5 v5.2.3
