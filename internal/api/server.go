@@ -61,6 +61,9 @@ const (
 
 	// maxAuditExportLimit is the maximum number of audit logs that can be exported at once
 	maxAuditExportLimit = 10000
+
+	// maxFlagRequestBodySize limits flag write request payloads to 1 MB.
+	maxFlagRequestBodySize = 1 << 20
 )
 
 type Server struct {
@@ -440,7 +443,7 @@ func (s *Server) handleListFlags(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetFlag(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(chi.URLParam(r, "id"))
 	if key == "" {
-		ValidationError(w, r, "Missing required parameters", map[string]string{"id": "Flag id is required"})
+		ValidationError(w, r, "Flag id is required", map[string]string{"id": "Flag id is required"})
 		return
 	}
 
@@ -465,12 +468,12 @@ func (s *Server) handleGetFlag(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateFlag(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
-		ValidationError(w, r, "Missing required parameters", map[string]string{"id": "Flag id is required"})
+		ValidationError(w, r, "Flag id is required", map[string]string{"id": "Flag id is required"})
 		return
 	}
 
 	var req upsertRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxFlagRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -500,7 +503,7 @@ func (s *Server) handleUpdateFlag(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 	var req upsertRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxFlagRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
