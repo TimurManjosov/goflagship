@@ -13,7 +13,7 @@ import (
 	"github.com/TimurManjosov/goflagship/internal/store"
 )
 
-var evaluationSnapshotMu sync.RWMutex
+var snapshotAccessMu sync.RWMutex
 
 // handleContextEvaluate handles POST /v1/evaluate.
 // POST is used to support complex JSON context payloads while keeping evaluation stateless.
@@ -50,10 +50,10 @@ func (s *Server) handleContextEvaluate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) evaluateSingleFlag(w http.ResponseWriter, r *http.Request, flagKey string, ctx *engine.UserContext) {
-	evaluationSnapshotMu.RLock()
+	snapshotAccessMu.RLock()
 	snap := snapshot.Load()
+	snapshotAccessMu.RUnlock()
 	flag, exists := snap.Flags[flagKey]
-	evaluationSnapshotMu.RUnlock()
 	if !exists {
 		NotFoundError(w, r, "Flag '"+flagKey+"' not found")
 		return
@@ -66,8 +66,10 @@ func (s *Server) evaluateSingleFlag(w http.ResponseWriter, r *http.Request, flag
 }
 
 func (s *Server) evaluateAllFlags(w http.ResponseWriter, ctx *engine.UserContext) {
-	evaluationSnapshotMu.RLock()
+	snapshotAccessMu.RLock()
 	snap := snapshot.Load()
+	snapshotAccessMu.RUnlock()
+
 	keys := make([]string, 0, len(snap.Flags))
 	for key := range snap.Flags {
 		keys = append(keys, key)
@@ -78,7 +80,6 @@ func (s *Server) evaluateAllFlags(w http.ResponseWriter, ctx *engine.UserContext
 	for _, key := range keys {
 		results = append(results, evaluateSnapshotFlag(snap.Flags[key], ctx))
 	}
-	evaluationSnapshotMu.RUnlock()
 
 	writeJSON(w, http.StatusOK, EvaluationResponse{
 		Results: results,

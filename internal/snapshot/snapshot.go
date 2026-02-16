@@ -210,7 +210,9 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 		}
 		var targetingRules []rules.Rule
 		if len(row.TargetingRules) > 0 {
-			_ = json.Unmarshal(row.TargetingRules, &targetingRules)
+			if err := json.Unmarshal(row.TargetingRules, &targetingRules); err != nil {
+				log.Printf("[snapshot] invalid targeting rules for key=%s: %v", row.Key, err)
+			}
 		}
 
 		flagsMap[row.Key] = FlagView{
