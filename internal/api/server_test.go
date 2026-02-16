@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/TimurManjosov/goflagship/internal/rules"
 	"github.com/TimurManjosov/goflagship/internal/snapshot"
 	"github.com/TimurManjosov/goflagship/internal/store"
 )
@@ -380,6 +382,191 @@ func TestUpsertFlag_InvalidToken(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("Expected status 401, got %d", rr.Code)
+	}
+}
+
+func TestUpsertFlag_WithTargetingRules(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	body := `{
+		"key": "test_flag",
+		"enabled": true,
+		"rollout": 100,
+		"targeting_rules": [{
+			"id": "rule-1",
+			"conditions": [{"property":"plan","operator":"eq","value":"premium"}],
+			"distribution": {"on": 100}
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	flag, err := st.GetFlagByKey(context.Background(), "test_flag")
+	if err != nil {
+		t.Fatalf("Failed to load stored flag: %v", err)
+	}
+	if len(flag.TargetingRules) != 1 {
+		t.Fatalf("Expected 1 targeting rule, got %d", len(flag.TargetingRules))
+	}
+}
+
+func TestUpsertFlag_InvalidTargetingRules(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	body := `{
+		"key": "test_flag",
+		"enabled": true,
+		"rollout": 100,
+		"targeting_rules": [{
+			"id": "rule-1",
+			"conditions": [{"property":"plan","operator":"invalid","value":"premium"}],
+			"distribution": {"on": 100}
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("Failed to decode error response: %v", err)
+	}
+	if errResp.Message != "invalid targeting_rules" {
+		t.Fatalf("Expected invalid targeting_rules message, got %q", errResp.Message)
+	}
+	if _, ok := errResp.Fields["targeting_rules[0]"]; !ok {
+		t.Fatalf("Expected targeting_rules[0] field in validation response, got %+v", errResp.Fields)
+	}
+}
+
+func TestUpsertFlag_RequestTooLarge(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+
+	tooLarge := fmt.Sprintf(`{"key":"big","enabled":true,"rollout":100,"description":"%s"}`, strings.Repeat("x", 1<<20))
+	req := httptest.NewRequest(http.MethodPost, "/v1/flags", bytes.NewBufferString(tooLarge))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("Expected status 413, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestUpdateFlag_WithTargetingRules(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+	ctx := context.Background()
+
+	if err := st.UpsertFlag(ctx, store.UpsertParams{Key: "test_flag", Enabled: true, Rollout: 100, Env: "prod"}); err != nil {
+		t.Fatalf("Failed to seed flag: %v", err)
+	}
+
+	body := `{
+		"enabled": true,
+		"rollout": 100,
+		"targeting_rules": [{
+			"id": "rule-1",
+			"conditions": [{"property":"plan","operator":"eq","value":"premium"}],
+			"distribution": {"on": 100}
+		}]
+	}`
+	req := httptest.NewRequest(http.MethodPut, "/v1/flags/test_flag", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	flag, err := st.GetFlagByKey(ctx, "test_flag")
+	if err != nil {
+		t.Fatalf("Failed to load updated flag: %v", err)
+	}
+	if len(flag.TargetingRules) != 1 {
+		t.Fatalf("Expected 1 targeting rule after update, got %d", len(flag.TargetingRules))
+	}
+}
+
+func TestGetAndListFlags_IncludeTargetingRules(t *testing.T) {
+	st := store.NewMemoryStore()
+	srv := NewServer(st, "prod", "admin-key")
+	handler := srv.Router()
+	ctx := context.Background()
+
+	if err := st.UpsertFlag(ctx, store.UpsertParams{
+		Key:     "test_flag",
+		Enabled: true,
+		Rollout: 100,
+		Env:     "prod",
+		TargetingRules: []rules.Rule{{
+			ID: "rule-1",
+			Conditions: []rules.Condition{{
+				Property: "plan",
+				Operator: rules.OpEq,
+				Value:    "premium",
+			}},
+			Distribution: map[string]int{"on": 100},
+		}},
+	}); err != nil {
+		t.Fatalf("Failed to seed flag: %v", err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/flags/test_flag?env=prod", nil)
+	getReq.Header.Set("Authorization", "Bearer admin-key")
+	getRR := httptest.NewRecorder()
+	handler.ServeHTTP(getRR, getReq)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("Expected GET status 200, got %d: %s", getRR.Code, getRR.Body.String())
+	}
+
+	var getResp flagResponse
+	if err := json.NewDecoder(getRR.Body).Decode(&getResp); err != nil {
+		t.Fatalf("Failed to decode GET response: %v", err)
+	}
+	if len(getResp.TargetingRules) != 1 {
+		t.Fatalf("Expected 1 targeting rule in GET response, got %d", len(getResp.TargetingRules))
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/flags?env=prod", nil)
+	listReq.Header.Set("Authorization", "Bearer admin-key")
+	listRR := httptest.NewRecorder()
+	handler.ServeHTTP(listRR, listReq)
+	if listRR.Code != http.StatusOK {
+		t.Fatalf("Expected list status 200, got %d: %s", listRR.Code, listRR.Body.String())
+	}
+
+	var listResp listFlagsResponse
+	if err := json.NewDecoder(listRR.Body).Decode(&listResp); err != nil {
+		t.Fatalf("Failed to decode list response: %v", err)
+	}
+	if len(listResp.Flags) == 0 || len(listResp.Flags[0].TargetingRules) != 1 {
+		t.Fatalf("Expected targeting rules in list response, got %+v", listResp.Flags)
 	}
 }
 
