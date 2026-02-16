@@ -1,13 +1,13 @@
 // Package api provides HTTP handlers and middleware for the flagship feature flag service.
 //
 // Request Flow:
-//   1. HTTP request hits Router() handler (defined in this file)
-//   2. Request passes through middleware (auth, rate limit, request ID, CORS)
-//   3. Handler function validates request and extracts parameters
-//   4. Business logic delegates to specialized packages (evaluation, snapshot, webhook, audit)
-//   5. Admin operations are logged to audit service (async, non-blocking)
-//   6. Admin mutations trigger snapshot update and webhook dispatch
-//   7. Response is serialized as JSON and returned to client
+//  1. HTTP request hits Router() handler (defined in this file)
+//  2. Request passes through middleware (auth, rate limit, request ID, CORS)
+//  3. Handler function validates request and extracts parameters
+//  4. Business logic delegates to specialized packages (evaluation, snapshot, webhook, audit)
+//  5. Admin operations are logged to audit service (async, non-blocking)
+//  6. Admin mutations trigger snapshot update and webhook dispatch
+//  7. Response is serialized as JSON and returned to client
 //
 // How to add a new API endpoint:
 //
@@ -33,6 +33,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -41,6 +42,7 @@ import (
 	"github.com/TimurManjosov/goflagship/internal/audit"
 	"github.com/TimurManjosov/goflagship/internal/auth"
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
+	"github.com/TimurManjosov/goflagship/internal/rules"
 	"github.com/TimurManjosov/goflagship/internal/snapshot"
 	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/TimurManjosov/goflagship/internal/targeting"
@@ -56,9 +58,12 @@ import (
 const (
 	// auditQueueSize is the size of the buffered channel for audit log entries
 	auditQueueSize = 100
-	
+
 	// maxAuditExportLimit is the maximum number of audit logs that can be exported at once
 	maxAuditExportLimit = 10000
+
+	// maxFlagRequestBodySize limits flag write request payloads to 1 MB.
+	maxFlagRequestBodySize = 1 << 20
 )
 
 type Server struct {
@@ -78,9 +83,9 @@ type Server struct {
 //   - adminKey: Legacy admin API key for backward compatibility. May be empty if using database keys.
 //
 // Initialization:
-//   1. Creates authenticator with optional key store (if store supports it)
-//   2. Creates audit service (if store supports postgres operations)
-//   3. Creates and starts webhook dispatcher (if store supports postgres operations)
+//  1. Creates authenticator with optional key store (if store supports it)
+//  2. Creates audit service (if store supports postgres operations)
+//  3. Creates and starts webhook dispatcher (if store supports postgres operations)
 //
 // Runtime Invariants:
 //   - s.store is never nil (set at construction)
@@ -89,13 +94,15 @@ type Server struct {
 //   - s.webhookDispatcher may be nil (only for non-postgres stores)
 //
 // Graceful Degradation:
-//   When using in-memory store, audit and webhook features are disabled but the
-//   server remains fully functional for flag operations. Handlers check for nil
-//   before using these optional services.
+//
+//	When using in-memory store, audit and webhook features are disabled but the
+//	server remains fully functional for flag operations. Handlers check for nil
+//	before using these optional services.
 //
 // Thread Safety:
-//   The returned Server is safe for concurrent use. The webhook dispatcher runs
-//   in a background goroutine if present.
+//
+//	The returned Server is safe for concurrent use. The webhook dispatcher runs
+//	in a background goroutine if present.
 func NewServer(s store.Store, env, adminKey string) *Server {
 	// Create authenticator with key store
 	var keyStore auth.KeyStore
@@ -113,7 +120,7 @@ func NewServer(s store.Store, env, adminKey string) *Server {
 		if queries != nil {
 			sink := audit.NewPostgresSink(queries)
 			auditSvc = audit.NewService(sink, audit.SystemClock{}, audit.UUIDGenerator{}, audit.NewDefaultRedactor(), auditQueueSize)
-			
+
 			// Create and start webhook dispatcher
 			webhookDisp = webhook.NewDispatcher(queries)
 			webhookDisp.Start()
@@ -151,11 +158,12 @@ func getQueriesFromStore(pgStore PostgresStoreInterface) *dbgen.Queries {
 // This is a convenience helper to reduce repeated type assertions and error handling.
 //
 // Usage:
-//   pgStore := s.requirePostgresStore(w, r)
-//   if pgStore == nil {
-//       return // Error already written to response
-//   }
-//   // Use pgStore...
+//
+//	pgStore := s.requirePostgresStore(w, r)
+//	if pgStore == nil {
+//	    return // Error already written to response
+//	}
+//	// Use pgStore...
 func (s *Server) requirePostgresStore(w http.ResponseWriter, r *http.Request) PostgresStoreInterface {
 	if pgStore, ok := s.store.(PostgresStoreInterface); ok {
 		return pgStore
@@ -169,11 +177,12 @@ func (s *Server) requirePostgresStore(w http.ResponseWriter, r *http.Request) Po
 // This is a convenience helper for handlers that need direct database access.
 //
 // Usage:
-//   queries := s.requireQueries(w, r)
-//   if queries == nil {
-//       return // Error already written to response
-//   }
-//   // Use queries...
+//
+//	queries := s.requireQueries(w, r)
+//	if queries == nil {
+//	    return // Error already written to response
+//	}
+//	// Use queries...
 func (s *Server) requireQueries(w http.ResponseWriter, r *http.Request) *dbgen.Queries {
 	pgStore := s.requirePostgresStore(w, r)
 	if pgStore == nil {
@@ -220,7 +229,10 @@ func (s *Server) Router() http.Handler {
 
 		r.Route("/v1/flags", func(r chi.Router) {
 			r.Use(s.auth.RequireAuth(auth.RoleAdmin))
+			r.Get("/", s.handleListFlags)
 			r.Post("/", s.handleUpsertFlag)
+			r.Get("/{id}", s.handleGetFlag)
+			r.Put("/{id}", s.handleUpdateFlag)
 			r.Delete("/", s.handleDeleteFlag)
 		})
 
@@ -352,14 +364,15 @@ type variantRequest struct {
 }
 
 type upsertRequest struct {
-	Key         string           `json:"key"`
-	Description string           `json:"description"`
-	Enabled     bool             `json:"enabled"`
-	Rollout     int32            `json:"rollout"`
-	Expression  *string          `json:"expression,omitempty"`
-	Config      map[string]any   `json:"config,omitempty"`
-	Variants    []variantRequest `json:"variants,omitempty"` // For A/B testing
-	Env         *string          `json:"env,omitempty"`      // defaults to s.env
+	Key            string           `json:"key"`
+	Description    string           `json:"description"`
+	Enabled        bool             `json:"enabled"`
+	Rollout        int32            `json:"rollout"`
+	Expression     *string          `json:"expression,omitempty"`
+	Config         map[string]any   `json:"config,omitempty"`
+	TargetingRules []rules.Rule     `json:"targeting_rules,omitempty"`
+	Variants       []variantRequest `json:"variants,omitempty"` // For A/B testing
+	Env            *string          `json:"env,omitempty"`      // defaults to s.env
 }
 
 type upsertResponse struct {
@@ -367,13 +380,147 @@ type upsertResponse struct {
 	ETag string `json:"etag"`
 }
 
-func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
+type flagResponse struct {
+	Key            string          `json:"key"`
+	Description    string          `json:"description"`
+	Enabled        bool            `json:"enabled"`
+	Rollout        int32           `json:"rollout"`
+	Expression     *string         `json:"expression,omitempty"`
+	Config         map[string]any  `json:"config,omitempty"`
+	TargetingRules []rules.Rule    `json:"targeting_rules,omitempty"`
+	Variants       []store.Variant `json:"variants,omitempty"`
+	Env            string          `json:"env"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+type listFlagsResponse struct {
+	Flags []flagResponse `json:"flags"`
+}
+
+func toFlagResponse(flag *store.Flag) flagResponse {
+	return flagResponse{
+		Key:            flag.Key,
+		Description:    flag.Description,
+		Enabled:        flag.Enabled,
+		Rollout:        flag.Rollout,
+		Expression:     flag.Expression,
+		Config:         flag.Config,
+		TargetingRules: flag.TargetingRules,
+		Variants:       flag.Variants,
+		Env:            flag.Env,
+		UpdatedAt:      flag.UpdatedAt,
+	}
+}
+
+func validateTargetingRules(ruleset []rules.Rule) (string, string, bool) {
+	for i, rule := range ruleset {
+		if err := rules.ValidateRule(rule); err != nil {
+			return fmt.Sprintf("targeting_rules[%d]", i), err.Error(), false
+		}
+	}
+	return "", "", true
+}
+
+func (s *Server) handleListFlags(w http.ResponseWriter, r *http.Request) {
+	env := strings.TrimSpace(r.URL.Query().Get("env"))
+	if env == "" {
+		env = s.env
+	}
+
+	flags, err := s.store.GetAllFlags(r.Context(), env)
+	if err != nil {
+		InternalError(w, r, "Failed to load flags")
+		return
+	}
+
+	resp := listFlagsResponse{Flags: make([]flagResponse, len(flags))}
+	for i := range flags {
+		resp.Flags[i] = toFlagResponse(&flags[i])
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleGetFlag(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimSpace(chi.URLParam(r, "id"))
+	if key == "" {
+		ValidationError(w, r, "Flag id is required", map[string]string{"id": "Flag id is required"})
+		return
+	}
+
+	flag, err := s.store.GetFlagByKey(r.Context(), key)
+	if err != nil {
+		NotFoundError(w, r, "Flag not found")
+		return
+	}
+
+	env := strings.TrimSpace(r.URL.Query().Get("env"))
+	if env == "" {
+		env = s.env
+	}
+	if flag.Env != env {
+		NotFoundError(w, r, "Flag not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toFlagResponse(flag))
+}
+
+func (s *Server) handleUpdateFlag(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		ValidationError(w, r, "Flag id is required", map[string]string{"id": "Flag id is required"})
+		return
+	}
+
 	var req upsertRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxFlagRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			RequestTooLargeError(w, r, "Request body exceeds 1MB limit")
+			return
+		}
 		BadRequestError(w, r, ErrCodeInvalidJSON, "Invalid JSON: "+err.Error())
 		return
 	}
 
+	if req.Key == "" {
+		req.Key = id
+	} else if req.Key != id {
+		ValidationError(w, r, "Validation failed for one or more fields", map[string]string{
+			"key": "key in body must match path id",
+		})
+		return
+	}
+
+	if field, message, ok := validateTargetingRules(req.TargetingRules); !ok {
+		ValidationError(w, r, "invalid targeting_rules", map[string]string{field: message})
+		return
+	}
+
+	s.handleUpsertFlagRequest(w, r, req)
+}
+
+func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
+	var req upsertRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxFlagRequestBodySize)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			RequestTooLargeError(w, r, "Request body exceeds 1MB limit")
+			return
+		}
+		BadRequestError(w, r, ErrCodeInvalidJSON, "Invalid JSON: "+err.Error())
+		return
+	}
+	if field, message, ok := validateTargetingRules(req.TargetingRules); !ok {
+		ValidationError(w, r, "invalid targeting_rules", map[string]string{field: message})
+		return
+	}
+	s.handleUpsertFlagRequest(w, r, req)
+}
+
+func (s *Server) handleUpsertFlagRequest(w http.ResponseWriter, r *http.Request, req upsertRequest) {
 	// default env
 	env := s.env
 	if req.Env != nil && strings.TrimSpace(*req.Env) != "" {
@@ -437,14 +584,15 @@ func (s *Server) handleUpsertFlag(w http.ResponseWriter, r *http.Request) {
 
 	// upsert via store
 	params := store.UpsertParams{
-		Key:         req.Key,
-		Description: req.Description,
-		Enabled:     req.Enabled,
-		Rollout:     req.Rollout,
-		Expression:  req.Expression,
-		Config:      req.Config,
-		Variants:    variants,
-		Env:         env,
+		Key:            req.Key,
+		Description:    req.Description,
+		Enabled:        req.Enabled,
+		Rollout:        req.Rollout,
+		Expression:     req.Expression,
+		Config:         req.Config,
+		TargetingRules: req.TargetingRules,
+		Variants:       variants,
+		Env:            env,
 	}
 	if err := s.store.UpsertFlag(r.Context(), params); err != nil {
 		// Log failed audit event
