@@ -223,6 +223,7 @@ func (s *Server) Router() http.Handler {
 		// Higher rate limit for evaluation (300 req/min per IP)
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(300, time.Minute))
+			r.Post("/v1/evaluate", s.handleContextEvaluate)
 			r.Post("/v1/flags/evaluate", s.handleEvaluate)
 			r.Get("/v1/flags/evaluate", s.handleEvaluateGET)
 		})

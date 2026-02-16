@@ -36,6 +36,7 @@ import (
 	"unsafe"
 
 	dbgen "github.com/TimurManjosov/goflagship/internal/db/gen"
+	"github.com/TimurManjosov/goflagship/internal/rules"
 	"github.com/TimurManjosov/goflagship/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -57,6 +58,7 @@ type FlagView struct {
 	Rollout     int32          `json:"rollout"`      // Percentage 0-100
 	Expression  *string        `json:"expression,omitempty"` // Targeting expression
 	Config      map[string]any `json:"config,omitempty"`
+	TargetingRules []rules.Rule `json:"targetingRules,omitempty"`
 	Variants    []Variant      `json:"variants,omitempty"` // For A/B testing
 	Env         string         `json:"env"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
@@ -206,6 +208,10 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 		if len(row.Config) > 0 {
 			_ = json.Unmarshal(row.Config, &config) // Ignore unmarshal errors, config stays nil
 		}
+		var targetingRules []rules.Rule
+		if len(row.TargetingRules) > 0 {
+			_ = json.Unmarshal(row.TargetingRules, &targetingRules)
+		}
 
 		flagsMap[row.Key] = FlagView{
 			Key:         row.Key,
@@ -214,6 +220,7 @@ func BuildFromRows(rows []dbgen.Flag) *Snapshot {
 			Rollout:     row.Rollout,
 			Expression:  row.Expression, // Already *string from database
 			Config:      config,
+			TargetingRules: targetingRules,
 			Env:         row.Env,
 			UpdatedAt:   row.UpdatedAt.Time,
 		}
@@ -280,6 +287,7 @@ func BuildFromFlags(flags []store.Flag) *Snapshot {
 			Rollout:     flag.Rollout,
 			Expression:  flag.Expression,
 			Config:      flag.Config,
+			TargetingRules: flag.TargetingRules,
 			Variants:    variants,
 			Env:         flag.Env,
 			UpdatedAt:   flag.UpdatedAt,
